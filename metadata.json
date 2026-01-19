@@ -1,0 +1,7 @@
+{
+  "name": "MTMAP-FO",
+  "description": "Next-gen FTTH network management system with GIS intelligence, automated feasibility studies, and real-time infrastructure monitoring.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
