@@ -29,7 +29,7 @@ const MapTools: React.FC<MapToolsProps> = ({ map }) => {
   return (
     <>
       {/* Right Toolbar */}
-      <div className="absolute top-1/2 -translate-y-1/2 right-6 z-[400] flex flex-col gap-4">
+      <div className="absolute top-1/2 -translate-y-1/2 right-2 md:right-6 z-[400] flex flex-col gap-3 md:gap-4 scale-90 md:scale-100 origin-right">
         <NavigationControls map={map} />
         <div className="h-px bg-slate-700/50 w-full" />
         <MeasureTool map={map} />

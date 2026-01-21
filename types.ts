@@ -2,16 +2,18 @@
 export enum EquipmentType {
   SITE = 'SITE',
   MSAN = 'MSAN',
-  OLT = 'OLT',
+  OLT = 'OLT', // Added OLT to align with EquipmentType.OLT usage
+  OLT_BIG = 'OLT_BIG',
+  OLT_MINI = 'OLT_MINI',
   SLOT = 'SLOT',
+  BOARD = 'BOARD',
   GPON_PORT = 'GPON_PORT',
   ODF = 'ODF',
   SPLITTER = 'SPLITTER',
   JOINT = 'JOINT',
-  CHAMBER = 'CHAMBER', // Underground Manhole / Regard
+  CHAMBER = 'CHAMBER', 
   PCO = 'PCO',
   ONT = 'ONT', 
-  FTTR_NODE = 'FTTR_NODE', 
   CABLE = 'CABLE'
 }
 
@@ -26,31 +28,49 @@ export enum EquipmentStatus {
   DECOMMISSIONED = 'DECOMMISSIONED'
 }
 
+export enum CableType {
+  FO04 = 'FO04',
+  FO08 = 'FO08',
+  FO12 = 'FO12',
+  FO24 = 'FO24',
+  FO48 = 'FO48',
+  FO72 = 'FO72',
+  FO96 = 'FO96',
+  FO144 = 'FO144'
+}
+
 export enum CableCategory {
   TRANSPORT = 'TRANSPORT',
-  DISTRIBUTION = 'DISTRIBUTION',
-  DROP = 'DROP',
-  INDOOR = 'INDOOR'
+  DISTRIBUTION = 'DISTRIBUTION'
 }
 
 export enum InstallationMode {
   UNDERGROUND = 'UNDERGROUND',
   AERIAL = 'AERIAL',
-  FACADE = 'FACADE',
-  MIXED = 'MIXED'
+  FAÇADE = 'FAÇADE'
+}
+
+export enum SiteType {
+  CENTRALE = 'CENTRALE',
+  MSAN_ZONE = 'MSAN_ZONE'
+}
+
+export enum MsanType {
+  INDOOR = 'INDOOR',
+  OUTDOOR = 'OUTDOOR'
+}
+
+export enum RiskLevel {
+  NONE = 'NONE',
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL'
 }
 
 export interface Coordinates {
   lat: number;
   lng: number;
-}
-
-export enum RiskLevel {
-  CRITICAL = 'CRITICAL',
-  HIGH = 'HIGH',
-  MEDIUM = 'MEDIUM',
-  LOW = 'LOW',
-  NONE = 'NONE'
 }
 
 export interface NetworkEntity {
@@ -60,23 +80,41 @@ export interface NetworkEntity {
   status: EquipmentStatus;
   parentId?: string | null; 
   location?: Coordinates; 
+  logicalPath?: string; 
   metadata?: Record<string, any>;
   isDeleted?: boolean;
   updatedAt?: string;
+  siteId?: string;
   riskLevel?: RiskLevel;
   riskReason?: string;
-  siteId?: string;
 }
 
-export enum SiteType {
-  CENTRALE = 'CENTRALE',
-  NRO = 'NRO',
-  SHELTER = 'SHELTER'
+export interface ClientProfile {
+  id: string;
+  login: string;
+  name: string;
+  ontSerial: string;
+  status: ClientStatus;
+  installedAt: string;
+  clientNumber?: number;
+  clientType?: ClientType;
+  offer?: CommercialOffer;
+  phone?: string;
+  email?: string;
+  address?: string;
+  routerModel?: string;
 }
 
-export enum MsanType {
-  INDOOR = 'INDOOR',
-  OUTDOOR = 'OUTDOOR'
+export enum ClientType {
+  RESIDENTIAL = 'RESIDENTIAL',
+  BUSINESS = 'BUSINESS',
+  VIP = 'VIP'
+}
+
+export enum CommercialOffer {
+  FIBRE_100M = 'FIBRE_100M',
+  FIBRE_200M = 'FIBRE_200M',
+  FIBRE_500M = 'FIBRE_500M'
 }
 
 export interface PCOPort {
@@ -85,45 +123,18 @@ export interface PCOPort {
   client?: ClientProfile;
 }
 
-// Unified Equipment Interface
 export interface Equipment extends NetworkEntity {
-  // Capacity Management
   totalCapacity?: number; 
   usedCapacity?: number;
-  
-  // Helpers
-  totalPorts?: number;
-  usedPorts?: number;
-  totalSlots?: number;
-  uplinkCapacityGbps?: number;
-  
-  // Specific Type Helpers
   model?: string;
   serial?: string;
-  
-  // Site
-  siteType?: SiteType;
-  powerStatus?: 'OK' | 'NOK';
-  coolingStatus?: 'OK' | 'NOK';
-
-  // MSAN
-  msanType?: MsanType;
-
-  // Splitter/PCO
-  splitterId?: string;
-  portId?: string;
-  ratio?: string;
-
-  // Slot/Port
-  oltId?: string;
   slotNumber?: number;
-  cardType?: string;
-  slotId?: string;
+  boardNumber?: number;
   portNumber?: number;
-  maxOnus?: number;
-  connectedOnus?: number;
-
-  // PCO Specific
+  splitterNumber?: number;
+  pcoNumber?: number;
+  siteType?: SiteType;
+  msanType?: MsanType;
   ports?: PCOPort[];
 }
 
@@ -131,84 +142,34 @@ export interface PhysicalEntity extends NetworkEntity {
   location: Coordinates;
 }
 
-export interface PhysicalSite extends PhysicalEntity {
-  type: EquipmentType.SITE;
-  siteType: SiteType;
-  powerStatus: 'OK' | 'NOK';
-  coolingStatus: 'OK' | 'NOK';
-}
-
-export interface OLT extends NetworkEntity {
-  type: EquipmentType.OLT;
-  siteId: string;
-  model: string;
+// Aliases for better semantics in hierarchy
+export interface PhysicalSite extends Equipment {}
+export interface MSAN extends Equipment {}
+export interface OLT extends Equipment {
   totalSlots: number;
-  uplinkCapacityGbps: number;
-  location?: Coordinates;
 }
-
-export interface MSAN extends NetworkEntity {
-  type: EquipmentType.MSAN;
-  msanType: MsanType;
-  totalPorts: number;
-  usedPorts: number;
-  location?: Coordinates; // Optional if indoor
-  siteId?: string; // If indoor
-}
-
-export interface Slot extends NetworkEntity {
-  type: EquipmentType.SLOT;
+export interface Slot extends Equipment {
   oltId: string;
-  slotNumber: number;
-  cardType: string;
   totalPorts: number;
-  usedPorts: number;
 }
-
-export interface GponPort extends NetworkEntity {
-  type: EquipmentType.GPON_PORT;
+export interface GponPort extends Equipment {
   slotId: string;
-  portNumber: number;
-  maxOnus: number;
-  connectedOnus: number;
 }
-
-export interface Splitter extends PhysicalEntity {
-  type: EquipmentType.SPLITTER;
-  portId?: string;
+export interface Splitter extends Equipment {
+  portId: string;
   ratio: string;
 }
-
-export interface PCO extends PhysicalEntity {
-  type: EquipmentType.PCO;
-  splitterId?: string;
+export interface PCO extends Equipment {
+  splitterId: string;
   totalPorts: number;
   usedPorts: number;
   ports: PCOPort[];
 }
-
-export interface Joint extends PhysicalEntity {
-  type: EquipmentType.JOINT;
+export interface Joint extends Equipment {
   jointType: string;
   capacityFibers: number;
 }
-
-export interface Chamber extends PhysicalEntity {
-  type: EquipmentType.CHAMBER;
-  chamberType: 'L1T' | 'L2T' | 'K1C' | 'K2C' | 'MH'; // Common telecom chamber types
-}
-
-export enum CableType {
-  FO01 = 'FO01', // New
-  FO04 = 'FO04',
-  FO12 = 'FO12',
-  FO16 = 'FO16', // New
-  FO24 = 'FO24',
-  FO48 = 'FO48',
-  FO56 = 'FO56', // New
-  FO96 = 'FO96',
-  FO144 = 'FO144'
-}
+export interface Chamber extends Equipment {}
 
 export interface FiberCable extends NetworkEntity {
   type: EquipmentType.CABLE;
@@ -219,57 +180,44 @@ export interface FiberCable extends NetworkEntity {
   startNodeId: string;
   endNodeId: string;
   path: Coordinates[];
-  installationMode?: InstallationMode; // New
+  installationMode?: InstallationMode;
 }
 
 export enum ClientStatus {
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
-  RESERVED = 'RESERVED',
   CANCELLED = 'CANCELLED'
 }
 
-export enum ClientType {
-  RESIDENTIAL = 'RESIDENTIAL',
-  BUSINESS = 'BUSINESS',
-  GOVERNMENT = 'GOVERNMENT'
+export type Client = ClientProfile;
+
+export interface NetworkState {
+  sites: PhysicalSite[];
+  msans: MSAN[];
+  olts: OLT[];
+  slots: Slot[];
+  ports: GponPort[];
+  splitters: Splitter[];
+  pcos: PCO[];
+  joints: Joint[];
+  chambers: Chamber[];
+  equipments: Equipment[];
+  cables: FiberCable[];
 }
 
-export enum CommercialOffer {
-  FIBRE_100M = 'FIBRE_100M',
-  FIBRE_200M = 'FIBRE_200M',
-  FIBRE_1G = 'FIBRE_1G'
+export interface RouteDetails {
+  distance: number;
+  duration: number;
+  profile: 'driving' | 'walking';
+  geometry: any;
 }
 
-export interface Client {
-  id: string;
-  equipmentId: string;
-  login: string;
-  name: string;
-  contactInfo: {
-    phone?: string;
-    email?: string;
-    address?: string;
-  };
-  contractInfo: {
-    plan: string;
-    activationDate: string;
-  };
-}
-
-export interface ClientProfile {
-  id: string;
-  login: string;
-  name: string;
-  ontSerial: string;
-  status: ClientStatus;
-  clientType: ClientType;
-  offer: CommercialOffer;
-  phone?: string;
-  email?: string;
-  address?: string;
-  routerModel?: string;
-  installedAt: string;
+export interface InstallationResult {
+  feasible: boolean;
+  nearestPCO?: PCO;
+  distanceMeters: number;
+  signalLossDb: number;
+  message: string;
 }
 
 export enum OperationType {
@@ -296,16 +244,6 @@ export interface MaterialItem {
   unit: string;
 }
 
-export interface Operation {
-  id: string;
-  type: string;
-  status: 'PLANNED' | 'IN_PROGRESS' | 'VALIDATED' | 'CANCELLED';
-  date: string;
-  technician: string;
-  targetId: string;
-  details: string;
-}
-
 export interface FieldOperation {
   id: string;
   type: OperationType;
@@ -315,53 +253,19 @@ export interface FieldOperation {
   teamId: string;
   zone: string;
   location: Coordinates;
-  targetEntityId: string; 
-  createdEntityId?: string;
-  createdEntityType?: EquipmentType;
+  targetEntityId: string;
+  createdEntityId: string;
+  createdEntityType: EquipmentType;
   materials: MaterialItem[];
   comments?: string;
-}
-
-export interface NetworkState {
-  sites: PhysicalSite[];
-  msans: MSAN[];
-  olts: OLT[];
-  slots: Slot[];
-  ports: GponPort[];
-  splitters: Splitter[];
-  pcos: PCO[];
-  joints: Joint[];
-  cables: FiberCable[];
 }
 
 export interface NetworkSnapshot {
   id: string;
   name: string;
   description?: string;
-  date: string; // Use date or createdAt
+  date: string;
   createdAt: string;
   createdBy: string;
   data: NetworkState;
-}
-
-export interface FttrMetadata {
-  roomName: string;
-  macAddress: string;
-  deviceType: 'MASTER' | 'SLAVE';
-  connectionType: 'FIBER' | 'WIFI' | 'ETH';
-}
-
-export interface RouteDetails {
-  distance: number;
-  duration: number;
-  profile: 'driving' | 'walking';
-  geometry: any;
-}
-
-export interface InstallationResult {
-  feasible: boolean;
-  nearestPCO?: PCO;
-  distanceMeters: number;
-  signalLossDb: number;
-  message: string;
 }

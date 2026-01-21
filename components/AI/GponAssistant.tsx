@@ -5,6 +5,7 @@ import { useNetwork } from '../../context/NetworkContext';
 import { DashboardAnalytics } from '../../lib/dashboard-analytics';
 import { ai, AI_MODELS, generateNetworkContextPrompt } from '../../lib/ai/client';
 import ReactMarkdown from 'react-markdown'; // Assuming react-markdown might be used, but for now simple text
+import { NetworkState } from '../../types';
 
 interface Message {
   id: string;
@@ -14,7 +15,7 @@ interface Message {
 }
 
 const GponAssistant: React.FC = () => {
-  const { sites, olts, msans, pcos, splitters, cables, joints } = useNetwork();
+  const { sites, olts, msans, pcos, splitters, cables, joints, slots, ports, equipments, chambers } = useNetwork();
   
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -40,9 +41,13 @@ const GponAssistant: React.FC = () => {
 
   // Compile Context on the fly
   const getContext = () => {
-    const metrics = DashboardAnalytics.getUtilization({ sites, olts, msans, pcos, splitters, cables, joints, slots: [], ports: [] });
-    const fiber = DashboardAnalytics.getFiberMetrics({ sites, olts, msans, pcos, splitters, cables, joints, slots: [], ports: [] });
-    const health = DashboardAnalytics.getHealthStatus({ sites, olts, msans, pcos, splitters, cables, joints, slots: [], ports: [] });
+    // Fix: provide the full NetworkState structure
+    const state: NetworkState = { 
+        sites, olts, msans, pcos, splitters, cables, joints, slots, ports, equipments, chambers
+    };
+    const metrics = DashboardAnalytics.getUtilization(state);
+    const fiber = DashboardAnalytics.getFiberMetrics(state);
+    const health = DashboardAnalytics.getHealthStatus(state);
     
     return {
         sites: sites.length,

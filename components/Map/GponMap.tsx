@@ -42,7 +42,7 @@ const GponMap: React.FC<GponMapProps> = ({
   pcos, 
   center, 
   onMapClick, 
-  onAddEquipment,
+  onAddEquipment, 
   onEquipmentSelect,
   selectedEntity,
   route,
@@ -57,7 +57,7 @@ const GponMap: React.FC<GponMapProps> = ({
   const { sites, msans: contextMsans, joints, chambers, cables, deleteEquipment, equipments } = useNetwork();
   
   // Use prop if provided (layer control), else context
-  const msansToRender = propMsans || contextMsans;
+  const msansToRender = propMsans || contextMsans || [];
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<L.Map | null>(null);
@@ -94,12 +94,6 @@ const GponMap: React.FC<GponMapProps> = ({
       searchLayerRef.current.addTo(mapInstance);
 
       setMap(mapInstance);
-
-      // Cleanup function to destroy map instance on unmount
-      return () => {
-        mapInstance.remove();
-        setMap(null);
-      };
     }
   }, []); 
 
@@ -144,7 +138,7 @@ const GponMap: React.FC<GponMapProps> = ({
 
     if (selectedEntity) {
         // 1. Find Children
-        const children = equipments.filter(e => e.parentId === selectedEntity.id) as PhysicalEntity[];
+        const children = (equipments || []).filter(e => e.parentId === selectedEntity.id) as PhysicalEntity[];
         
         children.forEach(child => {
             if (child.location) {
@@ -172,7 +166,7 @@ const GponMap: React.FC<GponMapProps> = ({
 
         // 2. Find Parent
         if (selectedEntity.parentId) {
-            const parent = equipments.find(e => e.id === selectedEntity.parentId) as PhysicalEntity;
+            const parent = (equipments || []).find(e => e.id === selectedEntity.parentId) as PhysicalEntity;
             if (parent && parent.location) {
                  // Draw logical line to parent
                  L.polyline([
@@ -280,13 +274,13 @@ const GponMap: React.FC<GponMapProps> = ({
     // --- RENDER ENTITIES ---
 
     // 1. Sites
-    sites.forEach(site => {
+    (sites || []).forEach(site => {
         const marker = createMarker(site, site.siteType);
         if(marker) marker.addTo(markersRef.current);
     });
 
     // 2. Outdoor MSANs
-    msansToRender.filter(m => 
+    (msansToRender || []).filter(m => 
         m.msanType === MsanType.OUTDOOR || 
         m.msanType === 'OUTDOOR' as MsanType || 
         (m.location && !m.siteId)
@@ -296,30 +290,30 @@ const GponMap: React.FC<GponMapProps> = ({
     });
 
     // 3. Chambers (NEW)
-    chambers.forEach(chamber => {
+    (chambers || []).forEach(chamber => {
         const marker = createMarker(chamber, 'MH');
         if(marker) marker.addTo(markersRef.current);
     });
 
     // 4. Joints
-    joints.forEach(joint => {
+    (joints || []).forEach(joint => {
         const marker = createMarker(joint);
         if(marker) marker.addTo(markersRef.current);
     });
 
     // 5. Splitters
-    splitters.forEach(spl => {
+    (splitters || []).forEach(spl => {
         const marker = createMarker(spl);
         if(marker) marker.addTo(markersRef.current);
     });
 
     // 6. PCOs & Logical Connections
-    pcos.forEach(pco => {
+    (pcos || []).forEach(pco => {
         const marker = createMarker(pco);
         if(marker) marker.addTo(markersRef.current);
 
         // Logical Line Fallback (if no cable exists)
-        const parentSplitter = splitters.find(s => s.id === pco.splitterId);
+        const parentSplitter = (splitters || []).find(s => s.id === pco.splitterId);
         if (parentSplitter) {
             L.polyline(
               [[pco.location.lat, pco.location.lng], [parentSplitter.location.lat, parentSplitter.location.lng]],
@@ -386,7 +380,7 @@ const GponMap: React.FC<GponMapProps> = ({
            <CableLayer 
                 map={map} 
                 cables={cables} 
-                entities={[...sites, ...joints, ...pcos, ...msansToRender.filter(m => m.location) as unknown as PhysicalEntity[]]} 
+                entities={[...(sites || []), ...(joints || []), ...(pcos || []), ...(msansToRender || []).filter(m => m.location) as unknown as PhysicalEntity[]]} 
                 visible={showCables}
            />
            {isDrawingMode && onDrawingFinish && onDrawingCancel && (

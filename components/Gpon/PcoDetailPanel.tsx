@@ -74,6 +74,7 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
     e.preventDefault();
     if (selectedPortId === null) return;
 
+    // Fix: using ClientProfile strictly
     const newClient: ClientProfile = {
       id: `client-${Date.now()}`,
       login,
@@ -289,7 +290,7 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
                                    <div>
                                        <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.offer')}</label>
                                        <select value={offer} onChange={e => setOffer(e.target.value as CommercialOffer)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white outline-none">
-                                           {Object.values(CommercialOffer).map(o => <option key={o} value={o}>{o.replace('_', ' ')}</option>)}
+                                           {Object.values(CommercialOffer).map(o => <option key={o} value={o}>{(o as string).replace('_', ' ')}</option>)}
                                        </select>
                                    </div>
 

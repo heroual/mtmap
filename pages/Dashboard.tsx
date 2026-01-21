@@ -4,18 +4,31 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Server, Share2, Activity, AlertTriangle, Cable, Box, History, ShieldCheck } from 'lucide-react';
 import { useNetwork } from '../context/NetworkContext';
 import { DashboardAnalytics } from '../lib/dashboard-analytics';
-import { EquipmentStatus } from '../types';
+import { EquipmentStatus, NetworkState } from '../types';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../context/ThemeContext';
 
 const Dashboard: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
-  const { sites, olts, msans, joints, pcos, splitters, cables, auditLogs } = useNetwork();
+  const { sites, olts, msans, joints, pcos, splitters, cables, auditLogs, slots, ports, equipments } = useNetwork();
 
   // Aggregate Real Data
   const metrics = useMemo(() => {
-    const state = { sites, olts, msans, joints, pcos, splitters, cables, slots: [], ports: [] };
+    // Fix: provide the full NetworkState structure
+    const state: NetworkState = { 
+      sites, 
+      olts, 
+      msans, 
+      joints, 
+      pcos, 
+      splitters, 
+      cables, 
+      slots, 
+      ports, 
+      equipments,
+      chambers: [] // Fallback if not in context
+    };
     return {
       totals: DashboardAnalytics.getTotals(state),
       fiber: DashboardAnalytics.getFiberMetrics(state),
@@ -23,7 +36,7 @@ const Dashboard: React.FC = () => {
       health: DashboardAnalytics.getHealthStatus(state),
       chartData: DashboardAnalytics.getSaturationChartData(state)
     };
-  }, [sites, olts, msans, joints, pcos, splitters, cables]);
+  }, [sites, olts, msans, joints, pcos, splitters, cables, slots, ports, equipments]);
 
   // KPI Cards Configuration
   const kpis = [

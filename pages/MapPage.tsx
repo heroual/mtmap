@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 const MapPage: React.FC = () => {
   const { t } = useTranslation();
   // Global State
-  const { olts, msans, slots, ports, splitters, pcos } = useNetwork();
+  const { olts, msans, slots, ports, splitters, pcos, equipments } = useNetwork();
 
   // Layers State (Added 'msan' layer)
   const [activeLayers, setActiveLayers] = useState({ olt: true, splitter: true, pco: true, msan: true });
@@ -170,7 +170,7 @@ const MapPage: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full h-full flex">
+    <div className="relative w-full h-full flex overflow-hidden">
       
       {/* Map Area */}
       <div className="flex-1 relative h-full">
@@ -246,19 +246,20 @@ const MapPage: React.FC = () => {
 
         </div>
 
-        {/* GPS Control */}
-        <div className={`absolute bottom-20 md:bottom-10 right-4 md:right-6 z-[400] flex flex-col gap-3 transition-opacity duration-300 ${isDrawingCable ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        {/* GPS Control: Adjusted positioning for Mobile/Tablet */}
+        <div className={`absolute bottom-28 md:bottom-10 right-4 md:right-6 z-[900] flex flex-col gap-3 transition-opacity duration-300 ${isDrawingCable ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           {gpsError && (
-            <div className="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 border border-rose-500/30 text-rose-500 text-xs mb-2 bg-rose-50 dark:bg-rose-500/10 font-bold">
-              <AlertCircle size={14} /> {gpsError}
+            <div className="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 border border-rose-500/30 text-rose-500 text-xs mb-2 bg-rose-50 dark:bg-rose-500/10 font-bold max-w-[200px] shadow-xl">
+              <AlertCircle size={14} className="shrink-0" /> <span className="truncate">{gpsError}</span>
             </div>
           )}
           <button 
             onClick={handleCenterUser}
             disabled={!userCoords}
-            className={`glass-panel p-3 rounded-full border transition-all duration-300 shadow-lg group ${userCoords ? 'border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400' : 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'}`}
+            className={`glass-panel w-12 h-12 flex items-center justify-center rounded-full border transition-all duration-300 shadow-xl group hover:scale-110 active:scale-95 ${userCoords ? 'border-cyan-500/30 bg-white/90 dark:bg-slate-900/90 hover:border-cyan-400 text-cyan-600 dark:text-cyan-400' : 'border-slate-200 dark:border-slate-700 bg-slate-100/50 dark:bg-slate-800/50 text-slate-400 cursor-not-allowed'}`}
+            title="My Location"
           >
-            {gpsLoading ? <div className="w-5 h-5 border-2 border-slate-400 border-t-cyan-500 rounded-full animate-spin" /> : <Locate className={`w-5 h-5 ${userCoords ? 'group-hover:scale-110' : ''} transition-transform`} />}
+            {gpsLoading ? <div className="w-5 h-5 border-2 border-slate-400 border-t-cyan-500 rounded-full animate-spin" /> : <Locate className={`w-6 h-6 ${userCoords ? 'group-hover:scale-110' : ''} transition-transform`} />}
           </button>
         </div>
 
@@ -322,11 +323,7 @@ const MapPage: React.FC = () => {
           </div>
           <div className="flex-1 overflow-hidden">
              <GponTreeView 
-               olts={olts} 
-               slots={slots} 
-               ports={ports} 
-               splitters={splitters} 
-               pcos={pcos} 
+               equipments={equipments}
                selectedEntityId={selectedEntity?.id}
                onSelect={handleTreeSelect} 
              />

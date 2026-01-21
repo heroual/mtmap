@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Undo, Check, X, Box, Square } from 'lucide-react';
+import { Undo, Check, X, Box, Square, Plus, Minus } from 'lucide-react';
 import L from 'leaflet';
 import { Coordinates, EquipmentType } from '../../../types';
 import { calculateDistance } from '../../../lib/gis';
@@ -184,6 +184,24 @@ const CableManualDrawer: React.FC<CableManualDrawerProps> = ({ map, onFinish, on
             >
                 <Box size={16} className="text-amber-600 dark:text-amber-400" />
                 <span className="text-[9px] font-bold uppercase mt-0.5 text-slate-500">Joint</span>
+            </button>
+
+            <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
+
+            {/* Navigation Controls */}
+            <button 
+                onClick={() => map.zoomIn()}
+                className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                title="Zoom In"
+            >
+                <Plus size={18} />
+            </button>
+            <button 
+                onClick={() => map.zoomOut()}
+                className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                title="Zoom Out"
+            >
+                <Minus size={18} />
             </button>
 
             <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />

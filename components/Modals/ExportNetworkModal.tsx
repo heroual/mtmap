@@ -5,6 +5,7 @@ import { useNetwork } from '../../context/NetworkContext';
 import { generateKML } from '../../lib/export/kml-generator';
 import { generateDXF } from '../../lib/export/dxf-generator';
 import { useTranslation } from 'react-i18next';
+import { NetworkState } from '../../types';
 
 interface ExportNetworkModalProps {
   onClose: () => void;
@@ -12,15 +13,15 @@ interface ExportNetworkModalProps {
 
 const ExportNetworkModal: React.FC<ExportNetworkModalProps> = ({ onClose }) => {
   const { t } = useTranslation();
-  const { sites, olts, msans, joints, pcos, cables, splitters, slots, ports } = useNetwork();
+  const { sites, olts, msans, joints, pcos, cables, splitters, slots, ports, equipments, chambers } = useNetwork();
   
   const [format, setFormat] = useState<'KML' | 'DXF'>('KML');
   const [scope, setScope] = useState<'ALL' | 'VISIBLE'>('ALL');
   const [isExporting, setIsExporting] = useState(false);
 
   // Helper to compile current state
-  const getCurrentState = () => ({
-    sites, olts, msans, joints, pcos, cables, splitters, slots, ports
+  const getCurrentState = (): NetworkState => ({
+    sites, olts, msans, joints, pcos, cables, splitters, slots, ports, equipments, chambers
   });
 
   const handleExport = async () => {
