@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PCO, ClientProfile, ClientStatus, PCOPort, ClientType, CommercialOffer } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
-import { X, User, Wifi, Activity, AlertCircle, Save, Trash2, Power, Router, Phone, Mail } from 'lucide-react';
+import { X, User, Wifi, Activity, AlertCircle, Save, Trash2, Power, Router, Phone, Mail, Loader2, Edit2, RefreshCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface PcoDetailPanelProps {
@@ -11,18 +11,19 @@ interface PcoDetailPanelProps {
   defaultSelectedClientId?: string | null;
 }
 
-const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSelectedClientId }) => {
+const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, defaultSelectedClientId }) => {
   const { t } = useTranslation();
-  const { addClientToPco, removeClientFromPco } = useNetwork();
+  const { pcos, addClientToPco, updateClientInPco, removeClientFromPco, updateEquipment } = useNetwork();
   
-  // Tabs: 'MATRIX' | 'LIST'
-  const [viewMode, setViewMode] = useState<'MATRIX' | 'LIST'>('MATRIX');
+  const pco = useMemo(() => {
+      return pcos.find(p => p.id === propPco.id) || propPco;
+  }, [pcos, propPco]);
 
-  // State for adding/editing a client
   const [selectedPortId, setSelectedPortId] = useState<number | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isEditingExisting, setIsEditingExisting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // Form State
   const [login, setLogin] = useState('');
   const [clientName, setClientName] = useState('');
   const [ontSerial, setOntSerial] = useState('');
@@ -34,27 +35,68 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
   const [routerModel, setRouterModel] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Auto-open client if requested via props (search)
+  const ports = useMemo(() => {
+      const dbPorts = pco.ports || [];
+      const capacity = Math.max(pco.totalPorts || 8, 4); 
+      
+      if (dbPorts.length < capacity) {
+          const padded = [...dbPorts];
+          for (let i = dbPorts.length; i < capacity; i++) {
+              padded.push({ id: i + 1, status: 'FREE' });
+          }
+          return padded;
+      }
+      return dbPorts;
+  }, [pco]);
+
+  const needsResync = (pco.ports?.length || 0) < (pco.totalPorts || 8);
+
+  const handleResync = async () => {
+      const newPorts = [...ports];
+      await updateEquipment(pco.id, { 
+          metadata: { 
+              ...pco.metadata, 
+              ports: newPorts,
+              totalPorts: newPorts.length
+          }
+      });
+  };
+
   useEffect(() => {
       if (defaultSelectedClientId) {
-          const port = pco.ports.find(p => p.client?.id === defaultSelectedClientId);
+          const port = ports.find(p => p.client?.id === defaultSelectedClientId);
           if (port) {
               setSelectedPortId(port.id);
-              setIsFormOpen(false); // View mode
+              setIsFormOpen(false);
           }
       }
-  }, [defaultSelectedClientId, pco.ports]);
+  }, [defaultSelectedClientId, ports]);
 
   const handlePortClick = (port: PCOPort) => {
     setSelectedPortId(port.id);
+    setFormError(null);
     if (port.status === 'FREE') {
-      // Prepare for adding
       resetForm();
+      setIsEditingExisting(false);
       setIsFormOpen(true);
     } else {
-      // Viewing existing
+      setIsEditingExisting(false);
       setIsFormOpen(false);
     }
+  };
+
+  const startEdit = (client: ClientProfile) => {
+      setLogin(client.login);
+      setClientName(client.name);
+      setOntSerial(client.ontSerial);
+      setStatus(client.status);
+      setClientType(client.clientType || ClientType.RESIDENTIAL);
+      setOffer(client.offer || CommercialOffer.FIBRE_100M);
+      setPhone(client.phone || '');
+      setEmail(client.email || '');
+      setRouterModel(client.routerModel || '');
+      setIsEditingExisting(true);
+      setIsFormOpen(true);
   };
 
   const resetForm = () => {
@@ -70,13 +112,13 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
       setFormError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedPortId === null) return;
+    setIsSaving(true);
+    setFormError(null);
 
-    // Fix: using ClientProfile strictly
-    const newClient: ClientProfile = {
-      id: `client-${Date.now()}`,
+    const clientData: Partial<ClientProfile> = {
       login,
       name: clientName,
       ontSerial,
@@ -85,29 +127,53 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
       offer,
       phone,
       email,
-      address: 'Synced from Map',
-      routerModel,
-      installedAt: new Date().toISOString()
+      routerModel
     };
 
-    const result = addClientToPco(pco.id, selectedPortId, newClient);
-    if (result.success) {
-      setIsFormOpen(false);
-      setSelectedPortId(null);
-    } else {
-      setFormError(result.message);
+    try {
+        let result;
+        if (isEditingExisting) {
+            const currentPort = ports.find(p => p.id === selectedPortId);
+            if (currentPort?.client?.id) {
+                result = await updateClientInPco(pco.id, currentPort.client.id, clientData);
+            } else {
+                setFormError("Client not found for update");
+                setIsSaving(false);
+                return;
+            }
+        } else {
+            const newClient: ClientProfile = {
+                ...clientData,
+                id: crypto.randomUUID(),
+                address: 'Synced from Map',
+                installedAt: new Date().toISOString()
+            } as ClientProfile;
+            
+            result = await addClientToPco(pco.id, selectedPortId, newClient);
+        }
+
+        if (result.success) {
+          setIsFormOpen(false);
+          setIsEditingExisting(false);
+        } else {
+          setFormError(result.message);
+        }
+    } catch (err) {
+        setFormError('Failed to save operation.');
+    } finally {
+        setIsSaving(false);
     }
   };
 
-  const handleDeleteClient = (portId: number) => {
-    if(confirm('Are you sure you want to remove this client? This frees the port and archives the record.')) {
-        removeClientFromPco(pco.id, portId);
+  const handleDeleteClient = async (portId: number) => {
+    const port = ports.find(p => p.id === portId);
+    if(confirm(t('common.confirm'))) {
+        await removeClientFromPco(pco.id, portId, port?.client?.id);
         setIsFormOpen(false);
         setSelectedPortId(null);
     }
   };
 
-  // Render logic for a single port slot
   const renderPort = (port: PCOPort) => {
     const isSelected = selectedPortId === port.id;
     let bgClass = 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700';
@@ -157,8 +223,7 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
     );
   };
 
-  // Get selected port object
-  const activePort = selectedPortId ? pco.ports.find(p => p.id === selectedPortId) : null;
+  const activePort = selectedPortId ? ports.find(p => p.id === selectedPortId) : null;
 
   return (
     <div className="absolute top-4 right-4 z-[500] w-[400px] animate-in slide-in-from-right-4 duration-300 flex flex-col h-[calc(100%-2rem)]">
@@ -172,7 +237,14 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
                 </div>
                 <div>
                     <h3 className="text-slate-900 dark:text-white font-bold text-sm leading-tight">{t('details_panel.pco_manage')}</h3>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">{pco.name}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-2">
+                        {pco.name}
+                        {needsResync && (
+                            <button onClick={handleResync} className="text-amber-500 hover:text-amber-600" title="Resync Capacity">
+                                <RefreshCcw size={12} />
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
             <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
@@ -184,17 +256,22 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
         <div className="px-4 py-3 bg-white dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800">
              <div className="flex justify-between items-center mb-1 text-xs">
                  <span className="font-bold text-slate-500">{t('details_panel.occupancy')}</span>
-                 <span className={`font-bold ${pco.usedPorts === pco.totalPorts ? 'text-rose-500' : 'text-slate-700 dark:text-slate-300'}`}>{pco.usedPorts} / {pco.totalPorts}</span>
+                 <span className={`font-bold ${pco.usedPorts >= ports.length ? 'text-rose-500' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {pco.usedPorts} / {ports.length}
+                 </span>
              </div>
              <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                 <div className={`h-full transition-all duration-500 ${pco.usedPorts / pco.totalPorts >= 0.8 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{width: `${(pco.usedPorts / pco.totalPorts) * 100}%`}}></div>
+                 <div 
+                    className={`h-full transition-all duration-500 ${pco.usedPorts / ports.length >= 0.8 ? 'bg-rose-500' : 'bg-emerald-500'}`} 
+                    style={{width: `${ports.length > 0 ? (pco.usedPorts / ports.length) * 100 : 0}%`}}
+                 ></div>
              </div>
         </div>
 
         {/* Visual Port Grid */}
         <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 shrink-0">
             <div className="grid grid-cols-4 gap-2">
-                {pco.ports.map(port => renderPort(port))}
+                {ports.map(port => renderPort(port))}
             </div>
         </div>
 
@@ -210,125 +287,77 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco, onClose, defaultSe
                                    <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold">#{activePort.id}</span>
                                    {t('details_panel.client_details')}
                                </h4>
-                               <button 
-                                 onClick={() => handleDeleteClient(activePort.id)}
-                                 className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 flex items-center gap-1 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded border border-rose-200 dark:border-rose-900/30"
-                               >
-                                   <Trash2 size={12} /> {t('details_panel.remove')}
-                               </button>
+                               <div className="flex gap-2">
+                                   <button onClick={() => startEdit(activePort.client!)} className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded border border-blue-200">
+                                       <Edit2 size={12} /> {t('common.edit')}
+                                   </button>
+                                   <button onClick={() => handleDeleteClient(activePort.id)} className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-700 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded border border-rose-200">
+                                       <Trash2 size={12} /> {t('common.remove')}
+                                   </button>
+                               </div>
                            </div>
-
-                           <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                           <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                                <div className="flex items-start justify-between">
                                    <div>
                                        <div className="text-lg font-bold text-slate-900 dark:text-white">{activePort.client.name}</div>
                                        <div className="text-sm text-iam-red dark:text-cyan-400 font-mono">{activePort.client.login}</div>
                                    </div>
-                                   <div className={`px-2 py-1 rounded text-xs font-bold border ${activePort.client.clientType === ClientType.BUSINESS ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-blue-100 text-blue-700 border-blue-200'}`}>
+                                   <div className="px-2 py-1 rounded text-xs font-bold border bg-blue-100 text-blue-700 border-blue-200">
                                        {activePort.client.clientType}
                                    </div>
                                </div>
-
-                               <div className="grid grid-cols-2 gap-3 pt-2">
-                                   <div className="col-span-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                                       <Router size={14} /> 
-                                       <span>ONT: <strong className="text-slate-900 dark:text-white font-mono">{activePort.client.ontSerial}</strong></span>
-                                   </div>
-                                   <div className="col-span-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                                       <Activity size={14} /> 
-                                       <span>Offer: <strong className="text-slate-900 dark:text-white">{activePort.client.offer || 'N/A'}</strong></span>
-                                   </div>
-                                   <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                                       <Phone size={14} /> 
-                                       <span>{activePort.client.phone || '-'}</span>
-                                   </div>
-                                   <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                                       <Mail size={14} /> 
-                                       <span className="truncate">{activePort.client.email || '-'}</span>
-                                   </div>
-                               </div>
-
-                               <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center">
-                                   <span className="text-xs text-slate-500">{t('modal_equipment.status_label')}</span>
-                                   <span className={`text-xs font-bold px-2 py-0.5 rounded ${activePort.client.status === ClientStatus.ACTIVE ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                       {activePort.client.status}
-                                   </span>
+                               <div className="grid grid-cols-2 gap-3 text-xs text-slate-600 dark:text-slate-400">
+                                   <div className="flex gap-2"><Router size={14} /> <span>ONT: <b>{activePort.client.ontSerial}</b></span></div>
+                                   <div className="flex gap-2"><Activity size={14} /> <span>Offer: <b>{activePort.client.offer || 'N/A'}</b></span></div>
+                                   <div className="flex gap-2"><Phone size={14} /> <span>{activePort.client.phone || '-'}</span></div>
+                                   <div className="flex gap-2"><Mail size={14} /> <span className="truncate">{activePort.client.email || '-'}</span></div>
                                </div>
                            </div>
                        </div>
                    ) : (
-                       // ADD / EDIT MODE
+                       // ADD / EDIT FORM
                        <div className="space-y-4 animate-in fade-in">
                            <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                <span className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-bold">#{activePort.id}</span>
-                               {t('details_panel.new_sub')}
+                               {isEditingExisting ? t('common.edit') : t('details_panel.new_sub')}
                            </h4>
                            
                            {formError && (
-                               <div className="p-2 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
+                               <div className="p-2 bg-rose-50 border border-rose-200 rounded text-rose-600 text-xs flex items-center gap-2">
                                    <AlertCircle size={14} /> {formError}
                                </div>
                            )}
 
                            <form onSubmit={handleSubmit} className="space-y-3">
-                               <div className="grid grid-cols-2 gap-3">
-                                   <div className="col-span-2">
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.client_name')}</label>
-                                       <input required type="text" value={clientName} onChange={e => setClientName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white focus:border-iam-red dark:focus:border-cyan-500 outline-none" placeholder="Full Name" />
-                                   </div>
-                                   <div className="col-span-2">
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.login')}</label>
-                                       <input required type="text" value={login} onChange={e => setLogin(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white focus:border-iam-red dark:focus:border-cyan-500 outline-none" placeholder="user@isp.net" />
-                                   </div>
-                                   
-                                   <div>
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.client_type')}</label>
-                                       <select value={clientType} onChange={e => setClientType(e.target.value as ClientType)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white outline-none">
-                                           {Object.values(ClientType).map(t => <option key={t} value={t}>{t}</option>)}
-                                       </select>
-                                   </div>
-                                   <div>
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.offer')}</label>
-                                       <select value={offer} onChange={e => setOffer(e.target.value as CommercialOffer)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white outline-none">
-                                           {Object.values(CommercialOffer).map(o => <option key={o} value={o}>{(o as string).replace('_', ' ')}</option>)}
-                                       </select>
-                                   </div>
-
-                                   <div className="col-span-2">
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.ont_serial')}</label>
-                                       <input required type="text" value={ontSerial} onChange={e => setOntSerial(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white font-mono uppercase" placeholder="ZTE-..." />
-                                   </div>
-
-                                   <div>
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.phone')}</label>
-                                       <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white" />
-                                   </div>
-                                   <div>
-                                       <label className="text-[10px] font-bold text-slate-500 uppercase">{t('details_panel.router_model')}</label>
-                                       <input type="text" value={routerModel} onChange={e => setRouterModel(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white" placeholder="F6600..." />
-                                   </div>
+                               <input required value={clientName} onChange={e => setClientName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm text-slate-900 dark:text-white" placeholder={t('details_panel.client_name')} />
+                               <input required value={login} onChange={e => setLogin(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm" placeholder={t('details_panel.login')} />
+                               <div className="grid grid-cols-2 gap-2">
+                                   <select value={clientType} onChange={e => setClientType(e.target.value as ClientType)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm">
+                                       {Object.values(ClientType).map(t => <option key={t} value={t}>{t}</option>)}
+                                   </select>
+                                   <select value={offer} onChange={e => setOffer(e.target.value as CommercialOffer)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm">
+                                       {Object.values(CommercialOffer).map(o => <option key={o} value={o}>{(o as string).replace('_', ' ')}</option>)}
+                                   </select>
                                </div>
+                               <input required value={ontSerial} onChange={e => setOntSerial(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded p-2 text-sm font-mono uppercase" placeholder={t('details_panel.ont_serial')} />
                                
-                               <button type="submit" className="w-full py-2.5 bg-iam-red dark:bg-cyan-600 hover:bg-red-700 dark:hover:bg-cyan-500 text-white font-bold rounded-lg shadow-lg flex items-center justify-center gap-2 mt-4">
-                                   <Save size={16} /> {t('details_panel.activate')}
-                               </button>
+                               <div className="flex gap-2 mt-4">
+                                   {isEditingExisting && <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 border rounded-lg text-slate-600 text-sm">{t('common.cancel')}</button>}
+                                   <button type="submit" disabled={isSaving} className="flex-1 py-2 bg-iam-red dark:bg-cyan-600 text-white font-bold rounded-lg shadow-lg flex justify-center gap-2">
+                                       {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} {isSaving ? t('common.loading') : t('common.save')}
+                                   </button>
+                               </div>
                            </form>
                        </div>
                    )}
                 </>
             ) : (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 space-y-4 opacity-70">
-                    <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center">
-                        <User size={32} />
-                    </div>
-                    <div className="text-center">
-                        <p className="text-sm font-bold text-slate-600 dark:text-slate-400">{t('details_panel.no_port_selected')}</p>
-                        <p className="text-xs">{t('details_panel.click_port_hint')}</p>
-                    </div>
+                    <User size={32} />
+                    <p className="text-sm font-bold">{t('details_panel.click_port_hint')}</p>
                 </div>
             )}
         </div>
-
       </div>
     </div>
   );

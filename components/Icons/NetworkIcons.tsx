@@ -41,6 +41,16 @@ export const getMarkerHtml = (type: EquipmentType, status: EquipmentStatus, isSe
   if (type === EquipmentType.SITE) { size = 48; iconScale = 28; }
   if (type === EquipmentType.CHAMBER) { size = 24; iconScale = 14; } // Chambers are smaller
 
+  // Badge Logic (Dynamic HTML injection)
+  // Note: Actual numbers are injected via JS after marker creation in GponMap if needed, 
+  // or we can map specific status to visual cues here.
+  let badgeHtml = '';
+  if (type === EquipmentType.PCO || type === EquipmentType.SPLITTER) {
+      if (status === EquipmentStatus.SATURATED) {
+          badgeHtml = `<div class="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[8px] font-bold text-white border border-white">!</div>`;
+      }
+  }
+
   // Professional Badge/Halo Design
   return `
     <div class="relative flex items-center justify-center transition-all duration-300 ${isSelected ? 'z-50 scale-110' : 'z-10'}" 
@@ -65,13 +75,13 @@ export const getMarkerHtml = (type: EquipmentType, status: EquipmentStatus, isSe
           ${svgContent}
         </svg>
 
-        <!-- Status Dot Indicator (Telecom Standard) -->
-        ${type !== EquipmentType.CHAMBER ? `
+        <!-- Status Dot / Badge -->
+        ${badgeHtml ? badgeHtml : (type !== EquipmentType.CHAMBER ? `
         <div class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white flex items-center justify-center"
              style="background-color: ${color};">
              ${status === EquipmentStatus.MAINTENANCE ? '<div class="w-1 h-1 bg-white rounded-full"></div>' : ''}
         </div>
-        ` : ''}
+        ` : '')}
 
       </div>
       

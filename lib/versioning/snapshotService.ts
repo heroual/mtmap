@@ -23,11 +23,19 @@ export const generateSnapshot = (
 };
 
 export const getSnapshotSummary = (snapshot: NetworkSnapshot) => {
-  const s = snapshot.data;
+  // Defensive coding: snapshot.data might be missing if fetched from DB list view
+  const s = (snapshot.data || {}) as any;
+  
+  const sites = Array.isArray(s.sites) ? s.sites.filter((x: any) => !x.isDeleted).length : 0;
+  const olts = Array.isArray(s.olts) ? s.olts.length : 0;
+  const msans = Array.isArray(s.msans) ? s.msans.length : 0;
+  const splitters = Array.isArray(s.splitters) ? s.splitters.length : 0;
+  const connections = Array.isArray(s.pcos) ? s.pcos.length : 0;
+
   return {
-    sites: s.sites.filter(x => !x.isDeleted).length,
-    equipments: s.olts.length + s.msans.length + s.splitters.length,
-    connections: s.pcos.length,
+    sites,
+    equipments: olts + msans + splitters,
+    connections,
     date: new Date(snapshot.createdAt).toLocaleString()
   };
 };

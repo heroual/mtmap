@@ -1,9 +1,10 @@
 
-import React from 'react';
-import { X, Network, Plus, ChevronUp, ChevronDown, ArrowUp, ArrowDown, MapPin } from 'lucide-react';
-import { NetworkEntity, EquipmentType } from '../../types';
+import React, { useMemo } from 'react';
+import { X, Network, Plus, ChevronUp, ChevronDown, ArrowUp, ArrowDown, MapPin, Server, CircuitBoard, Cpu, ChevronRight } from 'lucide-react';
+import { NetworkEntity, EquipmentType, Equipment } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useTranslation } from 'react-i18next';
+import { EquipmentArchitectureFactory } from '../../lib/factory/equipment-architecture';
 
 interface EquipmentDetailPanelProps {
   entity: NetworkEntity;
@@ -16,13 +17,40 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
   const { t } = useTranslation();
   const { equipments } = useNetwork();
 
-  // Find relatives
-  const children = equipments.filter(e => e.parentId === entity.id && !e.isDeleted);
+  // Detect if Chassis (OLT/MSAN)
+  const isChassis = entity.type === EquipmentType.OLT_BIG || entity.type === EquipmentType.OLT_MINI || entity.type === EquipmentType.MSAN || entity.type === EquipmentType.OLT;
+
+  // Find Parent
   const parent = entity.parentId ? equipments.find(e => e.id === entity.parentId) : null;
+
+  // --- CHASSIS LOGIC ---
+  const chassisSlots = useMemo(() => {
+      if (!isChassis) return [];
+      
+      const totalSlots = (entity as Equipment).metadata?.totalSlots || 2;
+      const realBoards = equipments.filter(e => e.parentId === entity.id && e.type === EquipmentType.BOARD);
+      
+      // Build slots array (1-indexed)
+      const slots = [];
+      for (let i = 1; i <= totalSlots; i++) {
+          const board = realBoards.find(b => (b.metadata?.slotNumber || 0) === i);
+          slots.push({
+              slotNumber: i,
+              board: board || null
+          });
+      }
+      return slots;
+  }, [entity, equipments, isChassis]);
+
+  // --- STANDARD HIERARCHY LOGIC (For non-chassis or fallback) ---
+  const children = useMemo(() => {
+      if (isChassis) return []; // Handled by chassis view
+      return equipments.filter(e => e.parentId === entity.id && !e.isDeleted);
+  }, [entity, equipments, isChassis]);
 
   return (
     <div className="absolute top-4 right-4 z-[500] w-[350px] animate-in slide-in-from-right-4 duration-300 flex flex-col max-h-[calc(100%-2rem)]">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
         
         {/* Header */}
         <div className="p-4 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
@@ -40,7 +68,7 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
             </button>
         </div>
 
-        <div className="overflow-y-auto custom-scrollbar p-4 space-y-4">
+        <div className="overflow-y-auto custom-scrollbar p-4 space-y-4 flex-1">
             
             {/* 1. Parent (Upstream) */}
             <div>
@@ -91,45 +119,88 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
 
             <div className="h-px bg-slate-100 dark:bg-slate-800 my-2" />
 
-            {/* 3. Children (Downstream) */}
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                        <div className="p-1 bg-slate-100 dark:bg-slate-800 rounded text-slate-500">
-                            <ArrowDown size={12} />
+            {/* 3. Chassis View (Slots & Boards) OR Standard Downstream */}
+            {isChassis ? (
+                <div>
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <Server size={14} className="text-slate-500" />
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Chassis View ({chassisSlots.length} Slots)</h4>
                         </div>
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('details_panel.downstream')} ({children.length})</h4>
                     </div>
-                    <button 
-                        onClick={() => onAddChild(entity)}
-                        className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded-full flex items-center gap-1 transition-colors"
-                    >
-                        <Plus size={10} /> {t('details_panel.add')}
-                    </button>
-                </div>
-
-                <div className="space-y-2">
-                    {children.length === 0 ? (
-                        <div className="text-center py-4 text-xs text-slate-400 italic">
-                            {t('details_panel.no_downstream')}
-                        </div>
-                    ) : (
-                        children.map(child => (
-                            <div 
-                                key={child.id}
-                                onClick={() => onSelectEntity(child)}
-                                className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-900 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 rounded-lg cursor-pointer group transition-colors"
-                            >
-                                <div>
-                                    <div className="text-sm font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">{child.name}</div>
-                                    <div className="text-[10px] text-slate-400">{child.type}</div>
+                    
+                    <div className="space-y-2">
+                        {chassisSlots.map((slot) => (
+                            <div key={slot.slotNumber} className="flex gap-2 items-stretch h-12">
+                                <div className="w-8 bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-xs font-mono text-slate-400 font-bold rounded-l-lg border-y border-l border-slate-200 dark:border-slate-800">
+                                    {slot.slotNumber}
                                 </div>
-                                <ChevronDown size={14} className="text-slate-300 group-hover:text-blue-500 -rotate-90" />
+                                <div className="flex-1">
+                                    {slot.board ? (
+                                        <div 
+                                            onClick={() => onSelectEntity(slot.board!)}
+                                            className="h-full bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-r-lg flex items-center justify-between px-3 cursor-pointer transition-colors group"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <CircuitBoard size={16} className="text-cyan-600 dark:text-cyan-400" />
+                                                <div className="text-xs font-bold text-slate-700 dark:text-slate-300">{slot.board.name}</div>
+                                            </div>
+                                            <ChevronRight size={14} className="text-cyan-400 group-hover:text-cyan-600" />
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => onAddChild({ ...entity, metadata: { ...entity.metadata, preferredSlot: slot.slotNumber } } as any)}
+                                            className="h-full w-full border border-dashed border-slate-300 dark:border-slate-700 rounded-r-lg flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
+                                        >
+                                            <Plus size={12} /> Empty Slot
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        ))
-                    )}
+                        ))}
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div>
+                    {/* Standard List for other types */}
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1 bg-slate-100 dark:bg-slate-800 rounded text-slate-500">
+                                <ArrowDown size={12} />
+                            </div>
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('details_panel.downstream')} ({children.length})</h4>
+                        </div>
+                        <button 
+                            onClick={() => onAddChild(entity)}
+                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded-full flex items-center gap-1 transition-colors"
+                        >
+                            <Plus size={10} /> {t('details_panel.add')}
+                        </button>
+                    </div>
+
+                    <div className="space-y-2">
+                        {children.length === 0 ? (
+                            <div className="text-center py-4 text-xs text-slate-400 italic">
+                                {t('details_panel.no_downstream')}
+                            </div>
+                        ) : (
+                            children.map(child => (
+                                <div 
+                                    key={child.id}
+                                    onClick={() => onSelectEntity(child)}
+                                    className="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-900 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 rounded-lg cursor-pointer group transition-colors"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-sm font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">{child.name}</div>
+                                        <div className="text-[10px] text-slate-400">{child.type}</div>
+                                    </div>
+                                    <ChevronDown size={14} className="text-slate-300 group-hover:text-blue-500 -rotate-90" />
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
 
         </div>
       </div>

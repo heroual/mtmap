@@ -1,10 +1,43 @@
 
-import React, { useState } from 'react';
-import { History, Camera, RotateCcw, Eye, Plus, FileClock, CheckCircle, AlertTriangle, ArrowRight, X } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Camera, RotateCcw, Eye, Plus, FileClock, AlertTriangle, ArrowRight, X, Filter, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { useNetwork } from '../../context/NetworkContext';
-import { NetworkSnapshot } from '../../types';
 import { getSnapshotSummary } from '../../lib/versioning/snapshotService';
 import { useTranslation } from 'react-i18next';
+import { EquipmentType } from '../../types';
+
+// Helper to compute deep diff
+const computeChanges = (oldData: any, newData: any) => {
+    const changes: { field: string, old: any, new: any }[] = [];
+    if (!oldData && !newData) return changes;
+    if (!oldData && newData) return [{ field: 'Record Created', old: 'NULL', new: 'CREATED' }];
+    if (oldData && !newData) return [{ field: 'Record Deleted', old: 'EXISTING', new: 'DELETED' }];
+
+    // Merge keys from both objects to find differences
+    const allKeys = new Set([...Object.keys(oldData || {}), ...Object.keys(newData || {})]);
+    
+    allKeys.forEach(key => {
+        // Skip metadata/system fields unless crucial
+        if (['updated_at', 'updatedAt', 'created_at', 'createdAt', 'metadata', 'path_geometry'].includes(key)) return;
+        
+        const vOld = oldData[key];
+        const vNew = newData[key];
+        
+        // Simple equality check
+        if (JSON.stringify(vOld) !== JSON.stringify(vNew)) {
+            let displayOld = vOld;
+            let displayNew = vNew;
+            
+            // Format objects nicely
+            if (typeof vOld === 'object' && vOld !== null) displayOld = JSON.stringify(vOld).substring(0, 50) + '...';
+            if (typeof vNew === 'object' && vNew !== null) displayNew = JSON.stringify(vNew).substring(0, 50) + '...';
+
+            changes.push({ field: key, old: displayOld, new: displayNew });
+        }
+    });
+    
+    return changes;
+}
 
 const SnapshotPanel: React.FC = () => {
   const { t } = useTranslation();
@@ -14,6 +47,28 @@ const SnapshotPanel: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState<'LOGS' | 'SNAPSHOTS'>('SNAPSHOTS');
 
+  // Log Filtering
+  const [filterAction, setFilterAction] = useState<string>('ALL');
+  const [filterEntity, setFilterEntity] = useState<string>('ALL');
+  const [searchLog, setSearchLog] = useState('');
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  const filteredLogs = useMemo(() => {
+      return auditLogs.filter(log => {
+          if (filterAction !== 'ALL' && log.action !== filterAction) return false;
+          if (filterEntity !== 'ALL' && log.entity_type !== filterEntity) return false;
+          if (searchLog) {
+              const term = searchLog.toLowerCase();
+              return (
+                  log.entity_name?.toLowerCase().includes(term) || 
+                  log.user_email?.toLowerCase().includes(term) ||
+                  log.entity_id?.toLowerCase().includes(term)
+              );
+          }
+          return true;
+      });
+  }, [auditLogs, filterAction, filterEntity, searchLog]);
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (newSnapName.trim()) {
@@ -21,6 +76,16 @@ const SnapshotPanel: React.FC = () => {
       setNewSnapName('');
       setIsCreating(false);
     }
+  };
+
+  const getActionColor = (action: string) => {
+      switch(action) {
+          case 'CREATE': return 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800';
+          case 'UPDATE': return 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800';
+          case 'DELETE': return 'text-rose-600 bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800';
+          case 'LINK': return 'text-purple-600 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800';
+          default: return 'text-slate-600 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700';
+      }
   };
 
   return (
@@ -152,41 +217,108 @@ const SnapshotPanel: React.FC = () => {
 
         {/* LOGS TAB */}
         {activeTab === 'LOGS' && (
-            <div className="space-y-0 relative">
-                <div className="absolute left-3 top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-800" />
-                {auditLogs.length === 0 && <div className="text-center text-slate-400 py-10 italic">{t('dashboard.activity.empty')}</div>}
-                {auditLogs.map(log => (
-                    <div key={log.id} className="relative pl-8 py-3 group">
-                        <div className={`absolute left-[9px] top-4 w-2 h-2 rounded-full border-2 border-white dark:border-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 z-10 ${
-                            log.action === 'CREATE' ? 'bg-emerald-500' :
-                            log.action === 'DELETE' ? 'bg-rose-500' :
-                            log.action === 'RESTORE' ? 'bg-amber-500' :
-                            'bg-blue-500'
-                        }`} />
-                        <div className="text-xs text-slate-400 dark:text-slate-500 font-mono mb-0.5">{new Date(log.timestamp).toLocaleTimeString()}</div>
-                        <div className="text-sm text-slate-700 dark:text-slate-200">
-                            <span className={`font-bold ${
-                                log.action === 'CREATE' ? 'text-emerald-600 dark:text-emerald-400' :
-                                log.action === 'DELETE' ? 'text-rose-600 dark:text-rose-400' :
-                                log.action === 'RESTORE' ? 'text-amber-600 dark:text-amber-400' :
-                                'text-blue-600 dark:text-blue-400'
-                            }`}>{log.action}</span> <span className="font-semibold text-slate-900 dark:text-white">{log.entityType}</span>: {log.entityName}
-                        </div>
-                        {log.changes && log.changes.length > 0 && (
-                            <div className="mt-2 bg-slate-50 dark:bg-slate-950 p-2 rounded text-xs font-mono text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
-                                {log.changes.map((change, i) => (
-                                    <div key={i} className="flex items-center gap-2">
-                                        <span className="text-slate-500">{change.field}:</span>
-                                        <span className="line-through opacity-50">{String(change.oldValue)}</span>
-                                        <ArrowRight size={10} />
-                                        <span className="text-slate-900 dark:text-white font-bold">{String(change.newValue)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <div className="text-[10px] text-slate-400 mt-1">User: {log.user}</div>
+            <div className="space-y-4">
+                
+                {/* Filters Toolbar */}
+                <div className="sticky top-0 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur py-2 border-b border-slate-100 dark:border-slate-800 flex gap-2 overflow-x-auto no-scrollbar">
+                    <div className="relative flex-1 min-w-[120px]">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input 
+                            value={searchLog} 
+                            onChange={e => setSearchLog(e.target.value)}
+                            placeholder="Search logs..." 
+                            className="w-full bg-slate-100 dark:bg-slate-800 rounded-lg pl-8 pr-2 py-1.5 text-xs outline-none focus:border-iam-red dark:focus:border-cyan-500 border border-transparent" 
+                        />
                     </div>
-                ))}
+                    <select 
+                        value={filterAction} 
+                        onChange={e => setFilterAction(e.target.value)}
+                        className="bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-2 text-xs font-bold outline-none text-slate-600 dark:text-slate-300"
+                    >
+                        <option value="ALL">All Actions</option>
+                        <option value="CREATE">CREATE</option>
+                        <option value="UPDATE">UPDATE</option>
+                        <option value="DELETE">DELETE</option>
+                    </select>
+                    <select 
+                        value={filterEntity} 
+                        onChange={e => setFilterEntity(e.target.value)}
+                        className="bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-2 text-xs font-bold outline-none text-slate-600 dark:text-slate-300"
+                    >
+                        <option value="ALL">All Types</option>
+                        {Object.values(EquipmentType).map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                </div>
+
+                <div className="space-y-0 relative">
+                    <div className="absolute left-3 top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-800" />
+                    {filteredLogs.length === 0 && <div className="text-center text-slate-400 py-10 italic">{t('dashboard.activity.empty')}</div>}
+                    
+                    {filteredLogs.map(log => {
+                        const isExpanded = expandedLogId === log.id;
+                        const changes = computeChanges(log.old_data, log.new_data);
+                        
+                        return (
+                            <div key={log.id} className="relative pl-8 py-3 group">
+                                {/* Dot */}
+                                <div className={`absolute left-[9px] top-4 w-2 h-2 rounded-full border-2 border-white dark:border-slate-900 ring-1 ring-slate-200 dark:ring-slate-800 z-10 ${
+                                    log.action === 'CREATE' ? 'bg-emerald-500' :
+                                    log.action === 'DELETE' ? 'bg-rose-500' :
+                                    log.action === 'UPDATE' ? 'bg-blue-500' :
+                                    'bg-purple-500'
+                                }`} />
+                                
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <div className="text-xs text-slate-400 dark:text-slate-500 font-mono mb-0.5">
+                                            {new Date(log.created_at).toLocaleTimeString()} • {new Date(log.created_at).toLocaleDateString()}
+                                        </div>
+                                        <div className="text-sm text-slate-700 dark:text-slate-200">
+                                            <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] mr-2 border ${getActionColor(log.action)}`}>{log.action}</span>
+                                            <span className="font-semibold text-slate-900 dark:text-white">{log.entity_type}</span>: {log.entity_id.substring(0,8)}...
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">User: <span className="font-bold text-slate-500 dark:text-slate-400">{log.user_email}</span></div>
+                                    </div>
+                                    
+                                    <button onClick={() => setExpandedLogId(isExpanded ? null : log.id)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+                                </div>
+                                
+                                {isExpanded && (
+                                    <div className="mt-3 bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 text-xs animate-in slide-in-from-top-2">
+                                        {changes.length > 0 ? (
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                                                        <th className="pb-1 font-normal w-1/4">Field</th>
+                                                        <th className="pb-1 font-normal w-1/3">Old Value</th>
+                                                        <th className="pb-1 font-normal">New Value</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="font-mono">
+                                                    {changes.map((change, i) => (
+                                                        <tr key={i} className="border-b border-slate-100 dark:border-slate-900 last:border-0">
+                                                            <td className="py-2 text-slate-600 dark:text-slate-400 font-bold">{change.field}</td>
+                                                            <td className="py-2 text-rose-600/80 dark:text-rose-400/80 break-all pr-2">{String(change.old)}</td>
+                                                            <td className="py-2 text-emerald-600 dark:text-emerald-400 break-all">{String(change.new)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="text-slate-400 italic">No significant data changes detected.</div>
+                                        )}
+                                        {/* Show RAW JSON for debug if needed */}
+                                        <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-800 text-[9px] text-slate-400 font-mono">
+                                            ID: {log.entity_id}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
         )}
 

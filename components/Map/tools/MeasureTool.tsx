@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Ruler, Trash2, CheckCircle2 } from 'lucide-react';
+import { Ruler, Trash2, CheckCircle2, ArrowLeftRight } from 'lucide-react';
 import L from 'leaflet';
 import { calculateDistance } from '../../../lib/gis';
 import { Coordinates } from '../../../types';
@@ -15,6 +15,7 @@ const MeasureTool: React.FC<MeasureToolProps> = ({ map }) => {
   const [isActive, setIsActive] = useState(false);
   const [points, setPoints] = useState<Coordinates[]>([]);
   const [totalDistance, setTotalDistance] = useState(0);
+  const [unit, setUnit] = useState<'m' | 'km'>('m'); // Default to meters
   
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
 
@@ -113,33 +114,50 @@ const MeasureTool: React.FC<MeasureToolProps> = ({ map }) => {
     }
   };
 
+  const displayDistance = unit === 'km' 
+    ? (totalDistance / 1000).toFixed(3) 
+    : Math.round(totalDistance).toString();
+
   return (
     <div className="flex flex-col items-end gap-2">
       {isActive && (
-        <div className="glass-panel p-3 rounded-lg border border-cyan-500/30 shadow-xl animate-in slide-in-from-right flex flex-col gap-2 min-w-[200px]">
-          <div className="flex justify-between items-center text-xs text-slate-400 uppercase tracking-wider">
+        <div className="glass-panel p-3 rounded-lg border border-cyan-500/30 shadow-xl animate-in slide-in-from-right flex flex-col gap-2 min-w-[200px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
+          <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             <span>{t('map_tools.measure')}</span>
-            <span className="text-cyan-400 font-bold">{points.length} Pts</span>
+            <span className="text-cyan-600 dark:text-cyan-400 font-bold">{points.length} Pts</span>
           </div>
-          <div className="text-2xl font-mono font-bold text-white">
-            {(totalDistance / 1000).toFixed(3)} <span className="text-sm text-slate-500 font-sans font-normal">km</span>
+          
+          <div 
+            className="flex items-baseline gap-1 cursor-pointer group select-none"
+            onClick={() => setUnit(prev => prev === 'm' ? 'km' : 'm')}
+            title="Click to switch unit"
+          >
+            <span className="text-2xl font-mono font-bold text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">
+                {displayDistance}
+            </span>
+            <span className="text-sm text-slate-500 dark:text-slate-400 font-sans font-bold flex items-center gap-1">
+                {unit}
+                <ArrowLeftRight size={12} className="opacity-50 group-hover:opacity-100 transition-opacity" />
+            </span>
           </div>
-          <div className="h-px bg-slate-700/50 my-1" />
+
+          <div className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+          
           <div className="flex gap-2">
             <button 
               onClick={() => setPoints([])}
-              className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded transition-colors flex items-center justify-center gap-1"
+              className="flex-1 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs rounded transition-colors flex items-center justify-center gap-1 font-bold"
             >
               <Trash2 size={12} /> {t('map_tools.clear')}
             </button>
             <button 
               onClick={toggleTool}
-              className="flex-1 py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/30 text-xs rounded transition-colors flex items-center justify-center gap-1"
+              className="flex-1 py-1.5 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-500/20 dark:hover:bg-cyan-500/30 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/30 text-xs rounded transition-colors flex items-center justify-center gap-1 font-bold"
             >
               <CheckCircle2 size={12} /> {t('map_tools.done')}
             </button>
           </div>
-          <div className="text-[10px] text-slate-500 text-center pt-1">
+          <div className="text-[10px] text-slate-400 text-center pt-1 italic">
             {t('map_tools.click_to_add')}
           </div>
         </div>
@@ -149,8 +167,8 @@ const MeasureTool: React.FC<MeasureToolProps> = ({ map }) => {
         onClick={toggleTool}
         className={`glass-panel p-2 rounded-lg border shadow-xl transition-all ${
           isActive 
-            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50' 
-            : 'border-slate-700 text-slate-400 hover:text-white'
+            ? 'bg-cyan-50 text-cyan-600 border-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-400 dark:border-cyan-500/50' 
+            : 'border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-white'
         }`}
         title={t('map_tools.measure')}
       >

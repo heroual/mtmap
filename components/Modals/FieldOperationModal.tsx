@@ -108,7 +108,7 @@ const FieldOperationModal: React.FC<FieldOperationModalProps> = ({ initialLocati
            splitterId: parentId, 
            totalPorts: 8, 
            usedPorts: 0, 
-           ports: [] 
+           ports: Array.from({ length: 8 }, (_, i) => ({ id: i + 1, status: 'FREE' })) 
        };
     } else if (opType === OperationType.INSTALL_SPLITTER) {
        entity = {
@@ -122,7 +122,8 @@ const FieldOperationModal: React.FC<FieldOperationModalProps> = ({ initialLocati
     const parentEntity = [...splitters, ...ports, ...joints].find(e => e.id === parentId);
     let cable = null;
     
-    if (parentEntity && 'location' in parentEntity) {
+    // Check if location exists and is not undefined before accessing lat/lng
+    if (parentEntity && 'location' in parentEntity && (parentEntity as any).location) {
         const dist = CablingRules.calculateLength((parentEntity as any).location, location);
         cable = {
             id: crypto.randomUUID(),

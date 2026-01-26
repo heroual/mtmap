@@ -6,15 +6,17 @@ import L from 'leaflet';
 import MapTools from './tools/MapTools';
 import RouteLayer from './RouteLayer';
 import CableLayer from './CableLayer';
+import TraceLayer from './TraceLayer';
 import EditEquipmentModal from '../Modals/EditEquipmentModal';
 import DeleteEquipmentDialog from '../Modals/DeleteEquipmentDialog';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { getMarkerHtml, IconUser } from '../Icons/NetworkIcons';
-import CableManualDrawer from './tools/CableManualDrawer'; // Import Drawing Tool
+import CableManualDrawer from './tools/CableManualDrawer';
+import { useTranslation } from 'react-i18next';
 
 interface GponMapProps {
   olts: OLT[];
-  msans?: MSAN[]; // Explicit prop
+  msans?: MSAN[];
   splitters: Splitter[];
   pcos: PCO[];
   ports: GponPort[];
@@ -29,7 +31,6 @@ interface GponMapProps {
   searchLocation?: { location: Coordinates; label: string } | null;
   shouldRecenter?: boolean;
   
-  // Drawing Props
   isDrawingMode?: boolean;
   onDrawingFinish?: (result: any) => void;
   onDrawingCancel?: () => void;
@@ -42,7 +43,7 @@ const GponMap: React.FC<GponMapProps> = ({
   pcos, 
   center, 
   onMapClick, 
-  onAddEquipment, 
+  onAddEquipment,
   onEquipmentSelect,
   selectedEntity,
   route,
@@ -54,26 +55,23 @@ const GponMap: React.FC<GponMapProps> = ({
   onDrawingFinish,
   onDrawingCancel
 }) => {
+  const { t } = useTranslation();
   const { sites, msans: contextMsans, joints, chambers, cables, deleteEquipment, equipments } = useNetwork();
   
-  // Use prop if provided (layer control), else context
-  const msansToRender = propMsans || contextMsans || [];
+  const msansToRender = propMsans || contextMsans;
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<L.Map | null>(null);
   
-  // Layer Groups
   const markersRef = useRef<L.LayerGroup>(new L.LayerGroup());
   const connectionsRef = useRef<L.LayerGroup>(new L.LayerGroup());
-  const hierarchyRef = useRef<L.LayerGroup>(new L.LayerGroup()); // New layer for hierarchy lines
+  const hierarchyRef = useRef<L.LayerGroup>(new L.LayerGroup()); 
   const userLayerRef = useRef<L.LayerGroup>(new L.LayerGroup());
   const searchLayerRef = useRef<L.LayerGroup>(new L.LayerGroup());
 
-  // Modal States
   const [editEntity, setEditEntity] = useState<PhysicalEntity | null>(null);
   const [deleteEntity, setDeleteEntity] = useState<PhysicalEntity | null>(null);
   
-  // Layer Visibility
   const [showCables, setShowCables] = useState(true);
 
   // Initialize Map
@@ -86,10 +84,9 @@ const GponMap: React.FC<GponMapProps> = ({
 
       L.control.scale({ position: 'bottomright', imperial: false }).addTo(mapInstance);
 
-      // Layers (Order matters for z-index)
-      connectionsRef.current.addTo(mapInstance); // Physical Cables
-      hierarchyRef.current.addTo(mapInstance);   // Logical Hierarchy Lines
-      markersRef.current.addTo(mapInstance);     // Equipment Markers
+      connectionsRef.current.addTo(mapInstance); 
+      hierarchyRef.current.addTo(mapInstance);   
+      markersRef.current.addTo(mapInstance);     
       userLayerRef.current.addTo(mapInstance);
       searchLayerRef.current.addTo(mapInstance);
 
@@ -97,7 +94,7 @@ const GponMap: React.FC<GponMapProps> = ({
     }
   }, []); 
 
-  // Listen for Add Equipment Event
+  // Re-adding essential listeners
   useEffect(() => {
     if (!map || !onAddEquipment) return;
     const handleAddRequest = (e: any) => onAddEquipment({ lat: e.latlng.lat, lng: e.latlng.lng });
@@ -109,14 +106,12 @@ const GponMap: React.FC<GponMapProps> = ({
     };
   }, [map, onAddEquipment]);
 
-  // Handle Center Update
   useEffect(() => {
     if (map && shouldRecenter) {
       map.flyTo([center.lat, center.lng], 16, { duration: 1.5, easeLinearity: 0.25 });
     }
   }, [center, shouldRecenter, map]);
 
-  // Handle Click
   useEffect(() => {
     if (!map) return;
     map.off('click');
@@ -131,59 +126,6 @@ const GponMap: React.FC<GponMapProps> = ({
     }
   }, [onMapClick, map]);
 
-  // --- HIERARCHY VISUALIZATION ---
-  useEffect(() => {
-    if (!map) return;
-    hierarchyRef.current.clearLayers();
-
-    if (selectedEntity) {
-        // 1. Find Children
-        const children = (equipments || []).filter(e => e.parentId === selectedEntity.id) as PhysicalEntity[];
-        
-        children.forEach(child => {
-            if (child.location) {
-                // Draw logical line to child
-                L.polyline([
-                    [selectedEntity.location.lat, selectedEntity.location.lng],
-                    [child.location.lat, child.location.lng]
-                ], {
-                    color: '#f59e0b', // Amber
-                    weight: 3,
-                    dashArray: '5, 10',
-                    opacity: 0.6
-                }).addTo(hierarchyRef.current);
-
-                // Add Highlight Circle to child
-                L.circleMarker([child.location.lat, child.location.lng], {
-                    radius: 15,
-                    color: '#f59e0b',
-                    fill: false,
-                    weight: 2,
-                    dashArray: '2, 4'
-                }).addTo(hierarchyRef.current);
-            }
-        });
-
-        // 2. Find Parent
-        if (selectedEntity.parentId) {
-            const parent = (equipments || []).find(e => e.id === selectedEntity.parentId) as PhysicalEntity;
-            if (parent && parent.location) {
-                 // Draw logical line to parent
-                 L.polyline([
-                    [selectedEntity.location.lat, selectedEntity.location.lng],
-                    [parent.location.lat, parent.location.lng]
-                ], {
-                    color: '#3b82f6', // Blue
-                    weight: 3,
-                    dashArray: '5, 10',
-                    opacity: 0.6
-                }).addTo(hierarchyRef.current);
-            }
-        }
-    }
-  }, [selectedEntity, equipments, map]);
-
-
   // Render Network Markers & Connections
   useEffect(() => {
     if (!map) return;
@@ -191,7 +133,6 @@ const GponMap: React.FC<GponMapProps> = ({
     markersRef.current.clearLayers();
     connectionsRef.current.clearLayers();
 
-    // Factory to create professional markers
     const createMarker = (entity: PhysicalEntity, subType?: string) => {
         if (!entity.location || typeof entity.location.lat !== 'number' || typeof entity.location.lng !== 'number') return null;
         if (entity.location.lat === 0 && entity.location.lng === 0) return null;
@@ -199,42 +140,39 @@ const GponMap: React.FC<GponMapProps> = ({
         const isSelected = selectedEntity?.id === entity.id;
         const html = getMarkerHtml(entity.type, entity.status, isSelected);
         
-        // Z-Index hierarchy
         let zIndex = 500;
         if (entity.type === EquipmentType.SITE) zIndex = 1000;
         if (entity.type === EquipmentType.MSAN) zIndex = 900;
         if (entity.type === EquipmentType.JOINT) zIndex = 800;
-        if (entity.type === EquipmentType.CHAMBER) zIndex = 700; // Below joints
+        if (entity.type === EquipmentType.CHAMBER) zIndex = 700;
         if (isSelected) zIndex = 2000;
 
         const icon = L.divIcon({
-            className: 'bg-transparent border-none', // Remove default leaflet square
+            className: 'bg-transparent border-none',
             html: html,
-            iconSize: [40, 40], // Base size container
-            iconAnchor: [20, 20], // Center anchor
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
         });
 
         const marker = L.marker([entity.location.lat, entity.location.lng], { icon, zIndexOffset: zIndex });
         
-        // Bind Events
         marker.on('click', (e) => {
             L.DomEvent.stopPropagation(e);
             if (onEquipmentSelect) onEquipmentSelect(entity);
         });
 
-        // Popup Content
         const popupDiv = document.createElement('div');
         popupDiv.className = "min-w-[200px]";
         
         let metaHtml = '';
-        if (entity.type === EquipmentType.SPLITTER) metaHtml = `<div class="mt-1 text-xs text-slate-500">Ratio ${(entity as Splitter).ratio}</div>`;
+        if (entity.type === EquipmentType.SPLITTER) metaHtml = `<div class="mt-1 text-xs text-slate-500">${t('map_popup.ratio')} ${(entity as Splitter).ratio}</div>`;
         if (entity.type === EquipmentType.PCO) {
             const pco = entity as PCO;
             const pct = Math.round((pco.usedPorts / pco.totalPorts) * 100);
             metaHtml = `
               <div class="mt-2">
                 <div class="flex justify-between text-xs text-slate-500 mb-1">
-                    <span>Usage</span><span>${pct}%</span>
+                    <span>${t('map_popup.usage')}</span><span>${pct}%</span>
                 </div>
                 <div class="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
                     <div class="h-full bg-emerald-500" style="width: ${pct}%"></div>
@@ -254,12 +192,11 @@ const GponMap: React.FC<GponMapProps> = ({
             </div>
             ${metaHtml}
             <div class="flex gap-2 mt-3 pt-2 border-t border-slate-100">
-                <button id="btn-edit-${entity.id}" class="flex-1 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold rounded transition-colors">Edit</button>
-                <button id="btn-del-${entity.id}" class="flex-1 py-1 bg-rose-50 hover:bg-rose-100 text-rose-500 text-xs font-bold rounded transition-colors">Delete</button>
+                <button id="btn-edit-${entity.id}" class="flex-1 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold rounded transition-colors">${t('map_popup.edit')}</button>
+                <button id="btn-del-${entity.id}" class="flex-1 py-1 bg-rose-50 hover:bg-rose-100 text-rose-500 text-xs font-bold rounded transition-colors">${t('map_popup.delete')}</button>
             </div>
         `;
 
-        // Handle Popup Button Clicks (React-free way)
         setTimeout(() => {
             const btnEdit = document.getElementById(`btn-edit-${entity.id}`);
             const btnDel = document.getElementById(`btn-del-${entity.id}`);
@@ -271,118 +208,45 @@ const GponMap: React.FC<GponMapProps> = ({
         return marker;
     };
 
-    // --- RENDER ENTITIES ---
-
-    // 1. Sites
-    (sites || []).forEach(site => {
-        const marker = createMarker(site, site.siteType);
-        if(marker) marker.addTo(markersRef.current);
-    });
-
-    // 2. Outdoor MSANs
-    (msansToRender || []).filter(m => 
-        m.msanType === MsanType.OUTDOOR || 
-        m.msanType === 'OUTDOOR' as MsanType || 
-        (m.location && !m.siteId)
-    ).forEach(msan => {
-        const marker = createMarker(msan as PhysicalEntity, 'CABINET');
-        if(marker) marker.addTo(markersRef.current);
-    });
-
-    // 3. Chambers (NEW)
-    (chambers || []).forEach(chamber => {
-        const marker = createMarker(chamber, 'MH');
-        if(marker) marker.addTo(markersRef.current);
-    });
-
-    // 4. Joints
-    (joints || []).forEach(joint => {
-        const marker = createMarker(joint);
-        if(marker) marker.addTo(markersRef.current);
-    });
-
-    // 5. Splitters
-    (splitters || []).forEach(spl => {
-        const marker = createMarker(spl);
-        if(marker) marker.addTo(markersRef.current);
-    });
-
-    // 6. PCOs & Logical Connections
-    (pcos || []).forEach(pco => {
-        const marker = createMarker(pco);
-        if(marker) marker.addTo(markersRef.current);
-
-        // Logical Line Fallback (if no cable exists)
-        const parentSplitter = (splitters || []).find(s => s.id === pco.splitterId);
-        if (parentSplitter) {
-            L.polyline(
-              [[pco.location.lat, pco.location.lng], [parentSplitter.location.lat, parentSplitter.location.lng]],
-              { color: '#94a3b8', weight: 1, opacity: 0.3, dashArray: '3,3', interactive: false }
-            ).addTo(connectionsRef.current);
+    // Render loop...
+    sites.forEach(site => { const m = createMarker(site, site.siteType); if(m) m.addTo(markersRef.current); });
+    msansToRender.filter(m => m.msanType === MsanType.OUTDOOR || m.msanType === 'OUTDOOR' as MsanType || (m.location && !m.siteId)).forEach(msan => { const m = createMarker(msan as PhysicalEntity, t('map_popup.cabinet')); if(m) m.addTo(markersRef.current); });
+    chambers.forEach(chamber => { const m = createMarker(chamber, 'MH'); if(m) m.addTo(markersRef.current); });
+    joints.forEach(joint => { const m = createMarker(joint); if(m) m.addTo(markersRef.current); });
+    splitters.forEach(spl => { const m = createMarker(spl); if(m) m.addTo(markersRef.current); });
+    pcos.forEach(pco => {
+        const m = createMarker(pco);
+        if(m) m.addTo(markersRef.current);
+        const parentSplitter = splitters.find(s => s.id === pco.splitterId);
+        if (pco.location && parentSplitter && parentSplitter.location) {
+            L.polyline([[pco.location.lat, pco.location.lng], [parentSplitter.location.lat, parentSplitter.location.lng]], { color: '#94a3b8', weight: 1, opacity: 0.3, dashArray: '3,3', interactive: false }).addTo(connectionsRef.current);
         }
     });
 
-    // Highlight Marker (Temp)
     if (highlightLocation) {
-       const pulseIcon = L.divIcon({
-        className: 'bg-transparent',
-        html: `<div class="relative w-6 h-6"><div class="absolute inset-0 bg-cyan-500 rounded-full animate-ping opacity-75"></div><div class="absolute inset-0 m-1 bg-cyan-400 rounded-full border-2 border-white"></div></div>`,
-        iconSize: [24, 24], iconAnchor: [12, 12]
-      });
-      L.marker([highlightLocation.lat, highlightLocation.lng], { icon: pulseIcon }).addTo(markersRef.current);
+       const pulseIcon = L.divIcon({ className: 'bg-transparent', html: `<div class="relative w-6 h-6"><div class="absolute inset-0 bg-cyan-500 rounded-full animate-ping opacity-75"></div><div class="absolute inset-0 m-1 bg-cyan-400 rounded-full border-2 border-white"></div></div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
+       L.marker([highlightLocation.lat, highlightLocation.lng], { icon: pulseIcon }).addTo(markersRef.current);
     }
 
-  }, [sites, msansToRender, olts, splitters, pcos, joints, chambers, selectedEntity, highlightLocation, map, onEquipmentSelect]);
-
-  // User & Search Layers
-  useEffect(() => {
-    if (!map) return;
-    userLayerRef.current.clearLayers();
-    if (userLocation && userLocation.location) {
-        const { lat, lng } = userLocation.location;
-        if (userLocation.accuracy) {
-            L.circle([lat, lng], { radius: userLocation.accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.1, weight: 1, dashArray: '4,4' }).addTo(userLayerRef.current);
-        }
-        
-        const userIconHtml = renderToStaticMarkup(
-            <div className="relative w-10 h-10 -ml-1 -mt-2 drop-shadow-xl">
-                 <IconUser size={40} color="#3b82f6" />
-            </div>
-        );
-        
-        const userIcon = L.divIcon({ 
-            className: 'bg-transparent border-none', 
-            html: userIconHtml, 
-            iconSize: [40, 40], 
-            iconAnchor: [20, 40] 
-        });
-        L.marker([lat, lng], { icon: userIcon, zIndexOffset: 2000 }).addTo(userLayerRef.current);
-    }
-  }, [userLocation, map]);
-
-  useEffect(() => {
-    if (!map) return;
-    searchLayerRef.current.clearLayers();
-    if (searchLocation) {
-        const pinHtml = `<div class="relative w-8 h-8 -mt-8 drop-shadow-lg text-rose-600"><svg viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="1.5" class="w-10 h-10"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg></div>`;
-        const pinIcon = L.divIcon({ className: 'bg-transparent border-none', html: pinHtml, iconSize: [40, 40], iconAnchor: [20, 40] });
-        L.marker([searchLocation.location.lat, searchLocation.location.lng], { icon: pinIcon }).addTo(searchLayerRef.current).openPopup();
-    }
-  }, [searchLocation, map]);
+  }, [sites, msansToRender, olts, splitters, pcos, joints, chambers, selectedEntity, highlightLocation, map, onEquipmentSelect, t]);
 
   return (
     <div className="w-full h-full relative">
        <div ref={mapContainer} className="w-full h-full z-0 relative bg-white dark:bg-slate-900 transition-colors duration-300" />
        {map && (
          <>
-           {!isDrawingMode && <MapTools map={map} />}
+           <MapTools map={map} isDrawing={isDrawingMode} />
            <RouteLayer map={map} route={route} />
+           
            <CableLayer 
                 map={map} 
                 cables={cables} 
-                entities={[...(sites || []), ...(joints || []), ...(pcos || []), ...(msansToRender || []).filter(m => m.location) as unknown as PhysicalEntity[]]} 
+                entities={[...sites, ...joints, ...pcos, ...msansToRender.filter(m => m.location) as unknown as PhysicalEntity[]]} 
                 visible={showCables}
            />
+           
+           <TraceLayer map={map} />
+
            {isDrawingMode && onDrawingFinish && onDrawingCancel && (
                <CableManualDrawer 
                    map={map}
@@ -392,42 +256,13 @@ const GponMap: React.FC<GponMapProps> = ({
            )}
          </>
        )}
-       {editEntity && (
-         <EditEquipmentModal entity={editEntity} onClose={() => setEditEntity(null)} />
-       )}
-       {deleteEntity && (
-         <DeleteEquipmentDialog 
-           entity={deleteEntity} 
-           onClose={() => setDeleteEntity(null)} 
-           onConfirm={() => {
-             deleteEquipment(deleteEntity.id);
-             setDeleteEntity(null);
-           }}
-         />
-       )}
+       {editEntity && <EditEquipmentModal entity={editEntity} onClose={() => setEditEntity(null)} />}
+       {deleteEntity && <DeleteEquipmentDialog entity={deleteEntity} onClose={() => setDeleteEntity(null)} onConfirm={() => { deleteEquipment(deleteEntity.id); setDeleteEntity(null); }} />}
+       
        <style>{`
-         .clean-popup .leaflet-popup-content-wrapper {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(8px);
-            border-radius: 12px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-            padding: 0;
-            border: 1px solid rgba(226, 232, 240, 0.8);
-         }
-         .clean-popup .leaflet-popup-content {
-            margin: 12px 16px;
-         }
-         .clean-popup .leaflet-popup-tip {
-            background: rgba(255, 255, 255, 0.95);
-         }
-         .dark .clean-popup .leaflet-popup-content-wrapper {
-            background: rgba(15, 23, 42, 0.9);
-            border-color: rgba(51, 65, 85, 0.5);
-            color: #f1f5f9;
-         }
-         .dark .clean-popup .leaflet-popup-tip {
-            background: rgba(15, 23, 42, 0.9);
-         }
+         .clean-popup .leaflet-popup-content-wrapper { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); padding: 0; border: 1px solid rgba(226, 232, 240, 0.8); }
+         .clean-popup .leaflet-popup-content { margin: 12px 16px; }
+         .dark .clean-popup .leaflet-popup-content-wrapper { background: rgba(15, 23, 42, 0.9); border-color: rgba(51, 65, 85, 0.5); color: #f1f5f9; }
        `}</style>
     </div>
   );

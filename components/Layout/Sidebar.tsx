@@ -25,7 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { name: t('nav.equipments'), icon: Network, path: '/equipments' },
     { name: t('nav.governance'), icon: ShieldCheck, path: '/governance' },
     { name: t('nav.status'), icon: Activity, path: '/status' },
-    { name: "À Propos / Vision", icon: Info, path: '/about' },
+    { name: t('nav.about'), icon: Info, path: '/about' },
     { name: t('nav.settings'), icon: Settings, path: '/settings' },
   ];
 
@@ -111,8 +111,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               <span className="text-xs font-bold text-slate-600 dark:text-slate-300">AD</span>
             </div>
             <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">Admin User</span>
-              <span className="text-[10px] font-bold text-slate-500 uppercase truncate">Network Engineer</span>
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{t('nav.admin_user')}</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase truncate">{t('nav.net_eng')}</span>
             </div>
           </div>
 
@@ -128,7 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               }`} />
               <div className="flex items-center gap-1">
                   <Database size={10} />
-                  {dbStatus === 'CONNECTED' ? 'CLOUD LINKED' : dbStatus === 'ERROR' ? 'DB ERROR' : 'LOCAL MODE'}
+                  {dbStatus === 'CONNECTED' ? t('nav.status_cloud') : dbStatus === 'ERROR' ? t('nav.status_error') : t('nav.status_local')}
               </div>
           </div>
         </div>

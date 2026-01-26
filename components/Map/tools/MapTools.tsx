@@ -12,9 +12,10 @@ import { Coordinates } from '../../../types';
 
 interface MapToolsProps {
   map: L.Map;
+  isDrawing?: boolean;
 }
 
-const MapTools: React.FC<MapToolsProps> = ({ map }) => {
+const MapTools: React.FC<MapToolsProps> = ({ map, isDrawing = false }) => {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showOpModal, setShowOpModal] = useState(false);
   const [opLocation, setOpLocation] = useState<Coordinates | null>(null);
@@ -29,34 +30,40 @@ const MapTools: React.FC<MapToolsProps> = ({ map }) => {
   return (
     <>
       {/* Right Toolbar */}
-      <div className="absolute top-1/2 -translate-y-1/2 right-2 md:right-6 z-[400] flex flex-col gap-3 md:gap-4 scale-90 md:scale-100 origin-right">
+      <div className="absolute top-1/2 -translate-y-1/2 right-6 z-[400] flex flex-col gap-4 transition-opacity duration-300">
         <NavigationControls map={map} />
-        <div className="h-px bg-slate-700/50 w-full" />
-        <MeasureTool map={map} />
         
-        {/* New Operation Button */}
-        <button 
-          onClick={handleNewOperation}
-          className="glass-panel p-2 rounded-lg border border-slate-700 shadow-xl text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-colors"
-          title="New Field Operation"
-        >
-          <HardHat size={20} />
-        </button>
+        {/* Hide other tools during drawing mode to prevent conflicts */}
+        {!isDrawing && (
+          <>
+            <div className="h-px bg-slate-700/50 w-full" />
+            <MeasureTool map={map} />
+            
+            {/* New Operation Button */}
+            <button 
+              onClick={handleNewOperation}
+              className="glass-panel p-2 rounded-lg border border-slate-700 shadow-xl text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-colors"
+              title="New Field Operation"
+            >
+              <HardHat size={20} />
+            </button>
 
-        <button 
-          onClick={() => setShowExportModal(true)}
-          className="glass-panel p-2 rounded-lg border border-slate-700 shadow-xl text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors"
-          title="Export Network Data"
-        >
-          <Download size={20} />
-        </button>
+            <button 
+              onClick={() => setShowExportModal(true)}
+              className="glass-panel p-2 rounded-lg border border-slate-700 shadow-xl text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors"
+              title="Export Network Data"
+            >
+              <Download size={20} />
+            </button>
 
-        <div className="h-px bg-slate-700/50 w-full" />
-        <StyleSwitcher map={map} />
+            <div className="h-px bg-slate-700/50 w-full" />
+            <StyleSwitcher map={map} />
+          </>
+        )}
       </div>
 
-      {/* Context Menu Overlay */}
-      <MapContextMenu map={map} />
+      {/* Context Menu Overlay - Disable in drawing mode */}
+      {!isDrawing && <MapContextMenu map={map} />}
 
       {/* Export Modal */}
       {showExportModal && (

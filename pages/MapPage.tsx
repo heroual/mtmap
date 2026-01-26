@@ -7,55 +7,52 @@ import AddCableModal from '../components/Modals/AddCableModal';
 import GponTreeView from '../components/Gpon/GponTreeView';
 import NavigationPanel from '../components/Map/NavigationPanel';
 import PcoDetailPanel from '../components/Gpon/PcoDetailPanel';
-import EquipmentDetailPanel from '../components/Map/EquipmentDetailPanel'; // NEW PANEL
+import SplitterDetailPanel from '../components/Gpon/SplitterDetailPanel'; 
+import JointDetailPanel from '../components/Gpon/JointDetailPanel'; 
+import BoardDetailPanel from '../components/Gpon/BoardDetailPanel'; // NEW
+import EquipmentDetailPanel from '../components/Map/EquipmentDetailPanel';
+import FiberTracePanel from '../components/Trace/FiberTracePanel'; 
+import TraceLayer from '../components/Map/TraceLayer';
 import { DEFAULT_VIEW_STATE } from '../constants';
 import { Layers, Locate, AlertCircle, ChevronDown, Network, X, Cable } from 'lucide-react';
 import { useGeolocation } from '../lib/gis/useGeolocation';
-import { Coordinates, PhysicalEntity, RouteDetails, EquipmentType, PCO, NetworkEntity } from '../types';
+import { Coordinates, PhysicalEntity, RouteDetails, EquipmentType, PCO, Splitter, NetworkEntity, Equipment } from '../types';
 import { useNetwork } from '../context/NetworkContext';
 import { getRoute } from '../lib/gis/routing';
 import { useTranslation } from 'react-i18next';
 
 const MapPage: React.FC = () => {
   const { t } = useTranslation();
-  // Global State
-  const { olts, msans, slots, ports, splitters, pcos, equipments } = useNetwork();
+  const { olts, msans, slots, ports, splitters, pcos, joints, isTracing, traceResult } = useNetwork();
 
-  // Layers State (Added 'msan' layer)
   const [activeLayers, setActiveLayers] = useState({ olt: true, splitter: true, pco: true, msan: true });
   const [layersOpen, setLayersOpen] = useState(true);
   const [treeOpen, setTreeOpen] = useState(false);
 
-  // Interaction State
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addCableModalOpen, setAddCableModalOpen] = useState(false);
   const [addLocation, setAddLocation] = useState<Coordinates | null>(null);
-  
-  // Hierarchy Management
   const [addParentEntity, setAddParentEntity] = useState<NetworkEntity | null>(null);
 
-  // Selection & Routing State
   const [selectedEntity, setSelectedEntity] = useState<PhysicalEntity | null>(null);
   const [route, setRoute] = useState<RouteDetails | null>(null);
   const [routeProfile, setRouteProfile] = useState<'driving' | 'walking'>('driving');
   
-  // Highlight specific client in PCO panel
   const [highlightClientId, setHighlightClientId] = useState<string | null>(null);
 
-  // Manual Drawing State
+  // Cable Drawing State
   const [isDrawingCable, setIsDrawingCable] = useState(false);
   const [manualCableData, setManualCableData] = useState<any | null>(null);
+  const [cableDraft, setCableDraft] = useState<any | null>(null);
 
-  // GIS Hooks
   const { location: userCoords, accuracy, error: gpsError, loading: gpsLoading } = useGeolocation();
   const [center, setCenter] = useState<Coordinates>(DEFAULT_VIEW_STATE);
   const [shouldRecenter, setShouldRecenter] = useState(false);
   const [searchResult, setSearchResult] = useState<{location: Coordinates; label: string} | null>(null);
 
-  // Effect: Calculate Route when entity selected
   useEffect(() => {
     const calculateRoute = async () => {
-      if (selectedEntity && userCoords) {
+      if (selectedEntity && selectedEntity.location && userCoords) {
         const routeData = await getRoute(userCoords, selectedEntity.location, routeProfile);
         setRoute(routeData);
       } else {
@@ -69,23 +66,22 @@ const MapPage: React.FC = () => {
   const handleSearchResult = (result: any) => {
     if (result) {
       if (result.category === 'CLIENT' && result.pcoId) {
-          // It's a client, find the PCO and select it
           const pco = pcos.find(p => p.id === result.pcoId);
-          if (pco) {
+          if (pco && pco.location) {
               setCenter(pco.location);
               setShouldRecenter(true);
               setTimeout(() => setShouldRecenter(false), 500);
               setSelectedEntity(pco);
-              setHighlightClientId(result.id); // Signal PCO panel to open this client
+              setHighlightClientId(result.id);
           }
       } else if (result.category === 'EQUIPMENT' && result.entity) {
-          // Equipment
-          setCenter(result.location || DEFAULT_VIEW_STATE);
-          setShouldRecenter(true);
-          setTimeout(() => setShouldRecenter(false), 500);
+          if (result.location) {
+              setCenter(result.location);
+              setShouldRecenter(true);
+              setTimeout(() => setShouldRecenter(false), 500);
+          }
           setSelectedEntity(result.entity);
       } else {
-          // Generic Location
           setSearchResult({ location: result.location, label: result.label });
           setCenter(result.location);
           setShouldRecenter(true);
@@ -106,7 +102,7 @@ const MapPage: React.FC = () => {
 
   const handleAddEquipmentRequest = (coords: Coordinates) => {
     setAddLocation(coords);
-    setAddParentEntity(null); // Reset parent if any
+    setAddParentEntity(null); 
     setAddModalOpen(true);
   };
 
@@ -119,9 +115,9 @@ const MapPage: React.FC = () => {
   };
 
   const handleEquipmentSelect = (entity: PhysicalEntity) => {
-    if (isDrawingCable) return; // Don't select if drawing
+    if (isDrawingCable) return; 
     setSelectedEntity(entity);
-    setHighlightClientId(null); // Reset client highlight on new selection
+    setHighlightClientId(null);
   };
 
   const handleQuitNavigation = () => {
@@ -131,28 +127,37 @@ const MapPage: React.FC = () => {
 
   const handleTreeSelect = (id: string, type: string) => {
     let entity: PhysicalEntity | undefined;
+    const hasLoc = (e: any): e is PhysicalEntity => e && e.location && typeof e.location.lat === 'number';
+
     if (type === 'OLT') {
       const foundOlt = olts.find(o => o.id === id);
-      if (foundOlt && foundOlt.location) {
-        entity = foundOlt as PhysicalEntity;
-      }
+      if (hasLoc(foundOlt)) entity = foundOlt;
     }
-    if (type === 'SPLITTER') entity = splitters.find(s => s.id === id);
-    if (type === 'PCO') entity = pcos.find(p => p.id === id);
+    
+    if (type === 'SPLITTER') {
+        const s = splitters.find(s => s.id === id);
+        if (hasLoc(s)) entity = s as PhysicalEntity;
+    }
+    
+    if (type === 'PCO') {
+        const p = pcos.find(p => p.id === id);
+        if (hasLoc(p)) entity = p as PhysicalEntity;
+    }
     
     if (entity) {
       setCenter(entity.location);
       setShouldRecenter(true);
       setSelectedEntity(entity); 
       setTimeout(() => setShouldRecenter(false), 500);
-      if (window.innerWidth < 768) {
-          setTreeOpen(false);
-      }
+    } 
+
+    if (window.innerWidth < 768) {
+        setTreeOpen(false);
     }
   };
 
-  // --- MANUAL CABLE DRAWING LOGIC ---
-  const handleStartDrawing = () => {
+  const handleStartDrawing = (draftState: any) => {
+      setCableDraft(draftState); 
       setAddCableModalOpen(false);
       setIsDrawingCable(true);
   };
@@ -166,15 +171,13 @@ const MapPage: React.FC = () => {
   const handleDrawingCancel = () => {
       setIsDrawingCable(false);
       setManualCableData(null);
-      setAddCableModalOpen(true); // Reopen modal to let user choose again or close
+      setAddCableModalOpen(true); 
   };
 
   return (
-    <div className="relative w-full h-full flex overflow-hidden">
-      
-      {/* Map Area */}
+    <div className="relative w-full h-full flex">
       <div className="flex-1 relative h-full">
-        {/* Top Left Controls */}
+        {/* Controls Overlay */}
         <div className={`absolute top-4 left-4 md:top-6 md:left-6 z-[400] flex flex-col gap-3 items-start w-[calc(100%-2rem)] md:max-w-[400px] transition-opacity duration-300 ${isDrawingCable ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <GlobalSearch onSelectResult={handleSearchResult} />
 
@@ -209,7 +212,6 @@ const MapPage: React.FC = () => {
                       <input type="checkbox" checked={activeLayers.pco} onChange={e => setActiveLayers(prev => ({...prev, pco: e.target.checked}))} className="hidden" />
                       <span className="text-sm text-slate-600 dark:text-slate-300 font-medium group-hover:text-iam-text dark:group-hover:text-white transition-colors">{t('map_tools.layer_pco')}</span>
                     </label>
-                    {/* Added MSAN Layer */}
                     <label className="flex items-center gap-3 cursor-pointer group">
                       <div className={`w-4 h-4 border-2 border-slate-500 rounded-sm ${activeLayers.msan ? 'bg-slate-500' : 'bg-transparent'} transition-colors`}></div>
                       <input type="checkbox" checked={activeLayers.msan} onChange={e => setActiveLayers(prev => ({...prev, msan: e.target.checked}))} className="hidden" />
@@ -221,20 +223,18 @@ const MapPage: React.FC = () => {
           </div>
           
           <div className="flex gap-2 w-full">
-             {/* Tree View Toggle */}
              <button 
                 onClick={() => setTreeOpen(!treeOpen)}
                 className={`glass-panel p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center sm:justify-start gap-3 flex-1 transition-colors ${treeOpen ? 'bg-slate-100 dark:bg-slate-800 border-iam-red dark:border-cyan-500/50' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}
              >
                 <Network size={18} className={treeOpen ? 'text-iam-red dark:text-cyan-400' : 'text-slate-500 dark:text-slate-400'} />
                 <span className={`text-sm font-bold hidden sm:inline ${treeOpen ? 'text-iam-red dark:text-cyan-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                  {t('map.network_hierarchy')}
+                  {t('map.network_explorer')}
                 </span>
              </button>
              
-             {/* New Cable Button */}
              <button 
-                onClick={() => { setManualCableData(null); setAddCableModalOpen(true); }}
+                onClick={() => { setManualCableData(null); setCableDraft(null); setAddCableModalOpen(true); }}
                 className={`glass-panel p-3 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center sm:justify-start gap-3 flex-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800`}
              >
                 <Cable size={18} className="text-blue-600 dark:text-blue-400" />
@@ -243,23 +243,20 @@ const MapPage: React.FC = () => {
                 </span>
              </button>
           </div>
-
         </div>
 
-        {/* GPS Control: Adjusted positioning for Mobile/Tablet */}
-        <div className={`absolute bottom-28 md:bottom-10 right-4 md:right-6 z-[900] flex flex-col gap-3 transition-opacity duration-300 ${isDrawingCable ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+        <div className={`absolute bottom-20 md:bottom-10 right-4 md:right-6 z-[400] flex flex-col gap-3 transition-opacity duration-300 ${isDrawingCable ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           {gpsError && (
-            <div className="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 border border-rose-500/30 text-rose-500 text-xs mb-2 bg-rose-50 dark:bg-rose-500/10 font-bold max-w-[200px] shadow-xl">
-              <AlertCircle size={14} className="shrink-0" /> <span className="truncate">{gpsError}</span>
+            <div className="glass-panel px-4 py-2 rounded-lg flex items-center gap-2 border border-rose-500/30 text-rose-500 text-xs mb-2 bg-rose-50 dark:bg-rose-500/10 font-bold">
+              <AlertCircle size={14} /> {gpsError}
             </div>
           )}
           <button 
             onClick={handleCenterUser}
             disabled={!userCoords}
-            className={`glass-panel w-12 h-12 flex items-center justify-center rounded-full border transition-all duration-300 shadow-xl group hover:scale-110 active:scale-95 ${userCoords ? 'border-cyan-500/30 bg-white/90 dark:bg-slate-900/90 hover:border-cyan-400 text-cyan-600 dark:text-cyan-400' : 'border-slate-200 dark:border-slate-700 bg-slate-100/50 dark:bg-slate-800/50 text-slate-400 cursor-not-allowed'}`}
-            title="My Location"
+            className={`glass-panel p-3 rounded-full border transition-all duration-300 shadow-lg group ${userCoords ? 'border-cyan-500/30 hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400' : 'border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'}`}
           >
-            {gpsLoading ? <div className="w-5 h-5 border-2 border-slate-400 border-t-cyan-500 rounded-full animate-spin" /> : <Locate className={`w-6 h-6 ${userCoords ? 'group-hover:scale-110' : ''} transition-transform`} />}
+            {gpsLoading ? <div className="w-5 h-5 border-2 border-slate-400 border-t-cyan-500 rounded-full animate-spin" /> : <Locate className={`w-5 h-5 ${userCoords ? 'group-hover:scale-110' : ''} transition-transform`} />}
           </button>
         </div>
 
@@ -271,43 +268,67 @@ const MapPage: React.FC = () => {
           onQuit={handleQuitNavigation}
         />
         
-        {/* Render Specific Panels based on Type */}
-        {selectedEntity && !isDrawingCable && (
-            selectedEntity.type === EquipmentType.PCO ? (
-                <PcoDetailPanel 
-                    pco={selectedEntity as PCO}
-                    onClose={() => setSelectedEntity(null)}
-                    defaultSelectedClientId={highlightClientId}
-                />
-            ) : (
-                <EquipmentDetailPanel 
-                    entity={selectedEntity}
-                    onClose={() => setSelectedEntity(null)}
-                    onAddChild={handleAddChildRequest}
-                    onSelectEntity={(e) => handleEquipmentSelect(e as PhysicalEntity)}
-                />
-            )
+        {/* Detail Panels Logic */}
+        {selectedEntity && !isDrawingCable && !isTracing && (
+            <>
+                {selectedEntity.type === EquipmentType.PCO ? (
+                    <PcoDetailPanel 
+                        pco={selectedEntity as PCO}
+                        onClose={() => setSelectedEntity(null)}
+                        defaultSelectedClientId={highlightClientId}
+                    />
+                ) : selectedEntity.type === EquipmentType.SPLITTER ? (
+                    <SplitterDetailPanel 
+                        splitter={selectedEntity as Splitter}
+                        onClose={() => setSelectedEntity(null)}
+                        onSelectPco={(pco) => setSelectedEntity(pco)}
+                    />
+                ) : selectedEntity.type === EquipmentType.JOINT ? (
+                    <JointDetailPanel
+                        joint={selectedEntity as Equipment}
+                        onClose={() => setSelectedEntity(null)}
+                    />
+                ) : selectedEntity.type === EquipmentType.BOARD ? (
+                    <BoardDetailPanel 
+                        board={selectedEntity as Equipment}
+                        onClose={() => setSelectedEntity(null)}
+                    />
+                ) : (
+                    <EquipmentDetailPanel 
+                        entity={selectedEntity}
+                        onClose={() => setSelectedEntity(null)}
+                        onAddChild={handleAddChildRequest}
+                        onSelectEntity={(e) => handleEquipmentSelect(e as PhysicalEntity)}
+                    />
+                )}
+            </>
         )}
 
-        <GponMap 
-          center={center}
-          shouldRecenter={shouldRecenter}
-          olts={activeLayers.olt ? olts : []}
-          msans={activeLayers.msan ? msans : []} // Pass MSANs
-          splitters={activeLayers.splitter ? splitters : []}
-          pcos={activeLayers.pco ? pcos : []}
-          ports={ports}
-          userLocation={userCoords ? { location: userCoords, accuracy } : null}
-          searchLocation={searchResult}
-          onAddEquipment={handleAddEquipmentRequest}
-          onEquipmentSelect={handleEquipmentSelect}
-          selectedEntity={selectedEntity}
-          route={route}
-          
-          isDrawingMode={isDrawingCable}
-          onDrawingFinish={handleDrawingFinish}
-          onDrawingCancel={handleDrawingCancel}
-        />
+        {/* Fiber Trace Panel */}
+        <FiberTracePanel />
+
+        {/* Main Map Component */}
+        <div className="w-full h-full relative">
+           <GponMap 
+              center={center}
+              shouldRecenter={shouldRecenter}
+              olts={activeLayers.olt ? olts : []}
+              msans={activeLayers.msan ? msans : []}
+              splitters={activeLayers.splitter ? splitters : []}
+              pcos={activeLayers.pco ? pcos : []}
+              ports={[]} 
+              userLocation={userCoords ? { location: userCoords, accuracy } : null}
+              searchLocation={searchResult}
+              onAddEquipment={handleAddEquipmentRequest}
+              onEquipmentSelect={handleEquipmentSelect}
+              selectedEntity={selectedEntity}
+              route={route}
+              
+              isDrawingMode={isDrawingCable}
+              onDrawingFinish={handleDrawingFinish}
+              onDrawingCancel={handleDrawingCancel}
+           />
+        </div>
       </div>
 
       {treeOpen && (
@@ -323,7 +344,12 @@ const MapPage: React.FC = () => {
           </div>
           <div className="flex-1 overflow-hidden">
              <GponTreeView 
-               equipments={equipments}
+               equipments={joints} // Include Joints in tree
+               olts={olts}
+               slots={slots} 
+               ports={ports} 
+               splitters={splitters} 
+               pcos={pcos} 
                selectedEntityId={selectedEntity?.id}
                onSelect={handleTreeSelect} 
              />
@@ -334,7 +360,7 @@ const MapPage: React.FC = () => {
       {addModalOpen && addLocation && (
         <AddEquipmentModal 
           initialLocation={addLocation} 
-          initialParent={addParentEntity} // Pass pre-selected parent
+          initialParent={addParentEntity}
           onClose={() => setAddModalOpen(false)} 
         />
       )}
@@ -344,6 +370,7 @@ const MapPage: React.FC = () => {
             onClose={() => setAddCableModalOpen(false)} 
             onStartDrawing={handleStartDrawing}
             manualDrawingData={manualCableData}
+            draftState={cableDraft}
           />
       )}
     </div>

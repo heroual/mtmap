@@ -91,7 +91,7 @@ const OperationHistoryPanel: React.FC<OperationHistoryPanelProps> = ({ entity, o
                        </div>
                     </div>
 
-                    {op.materials.length > 0 && (
+                    {op.materials && Array.isArray(op.materials) && op.materials.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-slate-300/20 dark:border-slate-700/30">
                         <div className="text-[10px] uppercase font-bold text-slate-500 mb-1">Materials Used</div>
                         <ul className="space-y-1">

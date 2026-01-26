@@ -2,9 +2,9 @@
 export enum EquipmentType {
   SITE = 'SITE',
   MSAN = 'MSAN',
-  OLT = 'OLT', // Added OLT to align with EquipmentType.OLT usage
-  OLT_BIG = 'OLT_BIG',
-  OLT_MINI = 'OLT_MINI',
+  OLT = 'OLT', 
+  OLT_BIG = 'OLT_BIG', // 17 Slots
+  OLT_MINI = 'OLT_MINI', // 2 Slots
   SLOT = 'SLOT',
   BOARD = 'BOARD',
   GPON_PORT = 'GPON_PORT',
@@ -32,8 +32,10 @@ export enum CableType {
   FO04 = 'FO04',
   FO08 = 'FO08',
   FO12 = 'FO12',
+  FO16 = 'FO16',
   FO24 = 'FO24',
   FO48 = 'FO48',
+  FO56 = 'FO56',
   FO72 = 'FO72',
   FO96 = 'FO96',
   FO144 = 'FO144'
@@ -87,6 +89,7 @@ export interface NetworkEntity {
   siteId?: string;
   riskLevel?: RiskLevel;
   riskReason?: string;
+  isVirtual?: boolean; // Flag for Factory generated items
 }
 
 export interface ClientProfile {
@@ -268,4 +271,33 @@ export interface NetworkSnapshot {
   createdAt: string;
   createdBy: string;
   data: NetworkState;
+}
+
+// --- FIBER TRACE ENGINE TYPES ---
+
+export interface FiberSegment {
+  id: string; // Unique ID for this step
+  type: 'CABLE' | 'NODE' | 'SPLICE' | 'ENDPOINT';
+  entityName: string;
+  entityId: string;
+  entityType: string;
+  fiberIndex?: number;
+  fiberColor?: string;
+  location?: Coordinates;
+  meta?: string; // e.g., "Input Port", "Splice Tray 2"
+  geometry?: Coordinates[]; // If cable
+}
+
+export interface TraceResult {
+  fiberId: number;
+  startCableId: string;
+  segments: FiberSegment[];
+  totalDistance: number;
+  totalLossEst: number;
+  status: 'CONNECTED' | 'BROKEN' | 'UNUSED';
+  endPoint?: {
+    type: 'CLIENT' | 'OLT' | 'OPEN';
+    name: string;
+    details?: any;
+  };
 }

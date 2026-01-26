@@ -14,7 +14,13 @@ export const fr = {
     governance: "Gouvernance",
     status: "État Système",
     settings: "Paramètres",
-    network_explorer: "Explorateur Réseau"
+    network_explorer: "Explorateur Réseau",
+    about: "À Propos / Vision",
+    status_cloud: "CLOUD CONNECTÉ",
+    status_error: "ERREUR DB",
+    status_local: "MODE LOCAL",
+    admin_user: "Utilisateur Admin",
+    net_eng: "Ingénieur Réseau"
   },
   common: {
     create: "Créer",
@@ -34,6 +40,28 @@ export const fr = {
     undo: "Annuler (Undo)",
     loading: "Chargement...",
     warning: "Attention"
+  },
+  map_popup: {
+    usage: "Usage",
+    ratio: "Ratio",
+    edit: "Éditer",
+    delete: "Supprimer",
+    cabinet: "CABINET"
+  },
+  trace: {
+    title: "Chemin Optique Fibre",
+    start: "Tracer la fibre",
+    tracing: "Traçage en cours...",
+    fiber_idx: "Fibre N°{{id}}",
+    total_dist: "Distance Totale",
+    loss_est: "Affaiblissement Est.",
+    status_connected: "Connectée",
+    status_broken: "Interrompue",
+    status_unused: "Libre / Non-brassée",
+    step_cable: "Câble Transport/Dist",
+    step_node: "Passage Nœud",
+    step_endpoint: "Terminaison",
+    fiber_color: "Couleur Tube/Fibre"
   },
   cable: {
     deploy_title: "Déployer Câble Fibre",
@@ -127,6 +155,32 @@ export const fr = {
     phone: "Téléphone",
     router_model: "Modèle Routeur",
     add: "Ajouter"
+  },
+  joint: {
+    title: "Boîte de Raccordement (Splicing)",
+    input: "Câbles Entrants (IN)",
+    output: "Câbles Sortants (OUT)",
+    plan: "Plan de Boîte",
+    source_cable: "Câble Source",
+    dest_cable: "Câble Dest.",
+    strand: "Brin",
+    no_splices: "Aucune soudure effectuée.",
+    no_cables: "Aucun câble connecté"
+  },
+  splitter: {
+    avail: "Disponibilité Ports",
+    free: "Libre",
+    total: "Total",
+    linked: "Lié",
+    auto: "Auto-Assigné",
+    tip: "Astuce: Cliquez sur un port occupé pour voir le PCO ou tracer."
+  },
+  board: {
+    title: "Carte GPON",
+    chassis_view: "Vue Châssis",
+    empty_slot: "Slot Vide",
+    utilization: "Utilisation Port",
+    trace_hint: "Cliquez sur un port actif pour tracer le signal optique en aval."
   },
   import_export: {
     export_title: "Exporter Données Réseau",
@@ -227,7 +281,7 @@ export const fr = {
     generate_wo: "Générer Ordre de Travail",
     click_mode: "Mode clic actif",
     reset: "Réinitialiser / Nouvelle Recherche",
-    select_on_map: "Sélectionner sur Carte"
+    select_on_map: "Select on Map"
   },
   inventory: {
     title: "Gestion des Équipements",
@@ -280,5 +334,68 @@ export const fr = {
         rollback_confirm: "Êtes-vous sûr de vouloir restaurer cet état ? L'état actuel sera sauvegardé.",
         read_only: "Vous visualisez un instantané en lecture seule. Les données en direct sont masquées."
     }
+  },
+  about: {
+    made_in: "100% Made in Morocco",
+    hero_title: "L'Intelligence Géospatiale",
+    hero_subtitle: "au Service du FTTH",
+    hero_desc: "Une plateforme unifiée née de plusieurs mois de recherche et développement intensifs. Conçue pour transformer la complexité du déploiement fibre en décisions stratégiques instantanées.",
+    problem_title: "Pourquoi MTMAP-FO ?",
+    problem_subtitle: "La transition du bureau d'études traditionnel vers l'ingénierie digitale.",
+    chaos_title: "Le Chaos Traditionnel",
+    chaos_desc: "Les études sur cartes papier ou fichiers Excel statiques entraînent des erreurs de routage, une saturation non détectée des PCOs et des délais d'activation client inacceptables.",
+    impact_title: "Impact Négatif",
+    solution_title: "La Révolution MTMAP",
+    solution_desc: "Un jumeau numérique (Digital Twin) de votre infrastructure. Chaque décision est assistée par des algorithmes géospatiaux qui valident la connectivité, le bilan optique et la capacité en temps réel.",
+    time_study: "Temps d'étude",
+    accuracy: "Précision Inventaire",
+    timeline_title: "Genèse du Projet",
+    timeline_desc: "Fruit de mois de travail acharné et de passion.",
+    phase1_title: "Conception & Architecture",
+    phase1_desc: "Analyse des besoins, modélisation de la base de données PostgreSQL/PostGIS et design du système distribué.",
+    phase2_title: "Développement Core GIS",
+    phase2_desc: "Intégration Leaflet, algorithmes de routage, calculs optiques et moteur de tracé temps réel.",
+    phase3_title: "En cours de développement",
+    phase3_desc: "Finalisation de la version 1.0.0 avec Splicing avancé, Modules de Gouvernance et optimisations de performance.",
+    catalog_title: "Catalogue Fonctionnel Complet",
+    features: {
+        gis: "Cartographie & SIG",
+        nis: "Inventaire & Patrimoine",
+        eng: "Ingénierie & Câblage",
+        splicing: "Gestion des Épissures",
+        trace: "Diagnostic & Trace Optique",
+        ops: "Opérations Terrain",
+        gov: "Gouvernance & Sécurité",
+        data: "Interopérabilité & Data",
+        ux: "UX / UI Moderne"
+    },
+    impact_items: {
+        days: "• 3 Jours/Étude",
+        mismatch: "• Incohérence des données",
+        loss: "• Perte Financière"
+    },
+    months: "Mois",
+    current: "Actuel",
+    feature_details: {
+        gis_1: "Carte interactive Leaflet multi-couches",
+        gis_2: "Géolocalisation & Recherche unifiée",
+        nis_1: "Modélisation hiérarchique (Site → Port)",
+        nis_2: "Vue Châssis & Gestion de Capacité",
+        eng_1: "Routage Intelligent & Manuel",
+        eng_2: "Code couleurs TIA-598",
+        splicing_1: "Plan de Boîte Interactif",
+        splicing_2: "Continuité Optique",
+        trace_1: "OTDR Virtuel & Bilan Optique",
+        trace_2: "Détection de coupures",
+        ops_1: "Assistant d'installation",
+        ops_2: "Rapports d'intervention",
+        gov_1: "Time Machine & Rollback",
+        gov_2: "Audit & Sécurité",
+        data_1: "Import/Export (Excel, KML, DXF)",
+        data_2: "Base de données PostGIS",
+        ux_1: "Responsive & Dark Mode",
+        ux_2: "Interface Glassmorphism"
+    },
+    copyright: "FIÈREMENT CRÉÉ PAR ELHEROUAL SALAH-EDDINE"
   }
 };

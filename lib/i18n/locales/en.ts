@@ -14,7 +14,13 @@ export const en = {
     governance: "Governance",
     status: "System Status",
     settings: "Settings",
-    network_explorer: "Network Explorer"
+    network_explorer: "Network Explorer",
+    about: "About / Vision",
+    status_cloud: "CLOUD LINKED",
+    status_error: "DB ERROR",
+    status_local: "LOCAL MODE",
+    admin_user: "Admin User",
+    net_eng: "Network Engineer"
   },
   common: {
     create: "Create",
@@ -34,6 +40,28 @@ export const en = {
     undo: "Undo",
     loading: "Loading...",
     warning: "Warning"
+  },
+  map_popup: {
+    usage: "Usage",
+    ratio: "Ratio",
+    edit: "Edit",
+    delete: "Delete",
+    cabinet: "CABINET"
+  },
+  trace: {
+    title: "Fiber Optical Path",
+    start: "Trace Fiber",
+    tracing: "Tracing...",
+    fiber_idx: "Fiber #{{id}}",
+    total_dist: "Total Distance",
+    loss_est: "Est. Loss",
+    status_connected: "Connected",
+    status_broken: "Broken",
+    status_unused: "Free / Unpatched",
+    step_cable: "Transport/Dist Cable",
+    step_node: "Node Pass",
+    step_endpoint: "Termination",
+    fiber_color: "Tube/Fiber Color"
   },
   cable: {
     deploy_title: "Deploy Fiber Cable",
@@ -127,6 +155,32 @@ export const en = {
     phone: "Phone",
     router_model: "Router Model",
     add: "Add"
+  },
+  joint: {
+    title: "Splicing Joint",
+    input: "Inputs (IN)",
+    output: "Outputs (OUT)",
+    plan: "Splicing Plan",
+    source_cable: "Source Cable",
+    dest_cable: "Dest. Cable",
+    strand: "Fiber",
+    no_splices: "No splices done.",
+    no_cables: "No cables connected"
+  },
+  splitter: {
+    avail: "Port Availability",
+    free: "Free",
+    total: "Total",
+    linked: "Linked",
+    auto: "Auto-Assigned",
+    tip: "Tip: Click an occupied port to view PCO details or trace."
+  },
+  board: {
+    title: "GPON Board",
+    chassis_view: "Chassis View",
+    empty_slot: "Empty Slot",
+    utilization: "Port Utilization",
+    trace_hint: "Click an active port to trace the fiber signal downstream."
   },
   import_export: {
     export_title: "Export Network Data",
@@ -280,5 +334,68 @@ export const en = {
         rollback_confirm: "Are you sure you want to restore this state? Current state will be backed up.",
         read_only: "You are viewing a Read-Only Snapshot. Live data is hidden."
     }
+  },
+  about: {
+    made_in: "100% Made in Morocco",
+    hero_title: "Geospatial Intelligence",
+    hero_subtitle: "for FTTH Networks",
+    hero_desc: "A unified platform born from months of intensive R&D. Designed to transform fiber deployment complexity into instant strategic decisions.",
+    problem_title: "Why MTMAP-FO?",
+    problem_subtitle: "Transitioning from traditional study office to digital engineering.",
+    chaos_title: "Traditional Chaos",
+    chaos_desc: "Studies on paper maps or static Excel files lead to routing errors, undetected PCO saturation, and unacceptable client activation delays.",
+    impact_title: "Negative Impact",
+    solution_title: "The MTMAP Revolution",
+    solution_desc: "A Digital Twin of your infrastructure. Every decision is assisted by geospatial algorithms validating connectivity, optical budget, and capacity in real-time.",
+    time_study: "Study Time",
+    accuracy: "Inventory Accuracy",
+    timeline_title: "Project Genesis",
+    timeline_desc: "Fruit of months of hard work and passion.",
+    phase1_title: "Design & Architecture",
+    phase1_desc: "Requirement analysis, PostgreSQL/PostGIS DB modeling, and distributed system design.",
+    phase2_title: "Core GIS Development",
+    phase2_desc: "Leaflet integration, routing algorithms, optical calculations, and real-time tracing engine.",
+    phase3_title: "Under Development",
+    phase3_desc: "Finalizing version 1.0.0 with advanced Splicing, Governance Modules, and performance optimizations.",
+    catalog_title: "Full Feature Catalog",
+    features: {
+        gis: "Mapping & GIS",
+        nis: "Inventory & Assets",
+        eng: "Engineering & Cabling",
+        splicing: "Splicing Management",
+        trace: "Diagnostic & Trace",
+        ops: "Field Operations",
+        gov: "Governance & Security",
+        data: "Interoperability & Data",
+        ux: "Modern UX / UI"
+    },
+    impact_items: {
+        days: "• 3 Days/Study",
+        mismatch: "• Data Mismatch",
+        loss: "• Financial Loss"
+    },
+    months: "Months",
+    current: "Current",
+    feature_details: {
+        gis_1: "Interactive Multi-layer Leaflet Map",
+        gis_2: "Geolocation & Unified Search",
+        nis_1: "Hierarchical Modeling (Site → Port)",
+        nis_2: "Rack View & Capacity Management",
+        eng_1: "Smart & Manual Routing",
+        eng_2: "TIA-598 Color Coding",
+        splicing_1: "Interactive Splice Plan",
+        splicing_2: "Optical Continuity",
+        trace_1: "Virtual OTDR & Budget Loss",
+        trace_2: "Breakage Detection",
+        ops_1: "Installation Wizard",
+        ops_2: "Intervention Reports",
+        gov_1: "Time Machine & Rollback",
+        gov_2: "Audit & Security",
+        data_1: "Import/Export (Excel, KML, DXF)",
+        data_2: "PostGIS Database",
+        ux_1: "Responsive & Dark Mode",
+        ux_2: "Glassmorphism Interface"
+    },
+    copyright: "PROUDLY CREATED BY ELHEROUAL SALAH-EDDINE"
   }
 };

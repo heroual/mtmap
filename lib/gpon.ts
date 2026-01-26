@@ -1,5 +1,7 @@
+
 import { PCO, InstallationResult, Coordinates, EquipmentStatus } from '../types';
-import { calculateDistance, estimateSignalLoss } from './gis';
+import { calculateDistance } from './gis';
+import { OpticalCalculator } from './optical-calculation';
 
 export const findBestPCO = (
   clientLocation: Coordinates,
@@ -10,6 +12,7 @@ export const findBestPCO = (
 
   // 1. Find nearest physically
   for (const pco of pcos) {
+    if (!pco.location) continue;
     const dist = calculateDistance(clientLocation, pco.location);
     if (dist < minDistance) {
       minDistance = dist;
@@ -29,17 +32,28 @@ export const findBestPCO = (
   // 2. Check Capacity
   const isSaturated = nearestPCO.status === EquipmentStatus.SATURATED || nearestPCO.usedPorts >= nearestPCO.totalPorts;
 
-  // 3. Check technical feasibility (Max Drop Cable length usually ~250m)
+  // 3. Check technical feasibility (Max Drop Cable length usually ~250m for standard drop)
   const MAX_DROP_LENGTH = 250;
   const isTooFar = minDistance > MAX_DROP_LENGTH;
+
+  // 4. Calculate Precise Optical Loss (Drop Segment)
+  // Distance + 2 Connectors (1 at PCO, 1 at PTO) + 0 Splices (Pre-connectorized usually, or 2 mech splices)
+  // Let's assume standard field install: 2 Connectors.
+  const budget = OpticalCalculator.calculateLinkBudget({
+      distanceMeters: minDistance,
+      connectorCount: 2,
+      spliceCount: 0 // Assuming direct drop cable
+  });
+
+  const signalLossDb = budget.totalLoss;
 
   if (isTooFar) {
     return {
       feasible: false,
       nearestPCO,
       distanceMeters: Math.round(minDistance),
-      signalLossDb: estimateSignalLoss(minDistance),
-      message: `Nearest PCO is too far (${Math.round(minDistance)}m). Max drop length is ${MAX_DROP_LENGTH}m.`,
+      signalLossDb,
+      message: `Nearest PCO is too far (${Math.round(minDistance)}m). Max standard drop length is ${MAX_DROP_LENGTH}m.`,
     };
   }
 
@@ -48,7 +62,7 @@ export const findBestPCO = (
       feasible: false,
       nearestPCO,
       distanceMeters: Math.round(minDistance),
-      signalLossDb: estimateSignalLoss(minDistance),
+      signalLossDb,
       message: 'Nearest PCO is saturated. Network expansion required.',
     };
   }
@@ -57,7 +71,7 @@ export const findBestPCO = (
     feasible: true,
     nearestPCO,
     distanceMeters: Math.round(minDistance),
-    signalLossDb: Number(estimateSignalLoss(minDistance).toFixed(2)),
+    signalLossDb,
     message: 'Installation is feasible.',
   };
 };

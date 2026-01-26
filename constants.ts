@@ -3,6 +3,6 @@ import { Equipment, EquipmentType, EquipmentStatus, FiberCable, CableCategory, C
 
 export const DEFAULT_VIEW_STATE = {
   lat: 30.4708,
-  lng: -8.8770,
+  lng: -8.8770, // Taroudant Coordinates
   zoom: 15
 };

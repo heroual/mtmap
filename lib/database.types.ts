@@ -55,6 +55,8 @@ export interface Database {
           is_deleted: boolean
           created_at: string
           updated_at: string
+          length_meters: number
+          metadata: Json
         }
         Insert: {
           id?: string
@@ -69,6 +71,8 @@ export interface Database {
           is_deleted?: boolean
           created_at?: string
           updated_at?: string
+          length_meters?: number
+          metadata?: Json
         }
         Update: Partial<Database['public']['Tables']['cables']['Insert']>
       }
@@ -115,6 +119,31 @@ export interface Database {
           created_at?: string
         }
         Update: Partial<Database['public']['Tables']['operations']['Insert']>
+      }
+      audit_logs: {
+        Row: {
+          id: string
+          user_email: string
+          action: string
+          entity_type: string
+          entity_id: string
+          entity_path: string | null
+          old_data: Json | null
+          new_data: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_email: string
+          action: string
+          entity_type: string
+          entity_id: string
+          entity_path?: string | null
+          old_data?: Json | null
+          new_data?: Json | null
+          created_at?: string
+        }
+        Update: Partial<Database['public']['Tables']['audit_logs']['Insert']>
       }
     }
   }
