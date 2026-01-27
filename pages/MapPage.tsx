@@ -9,14 +9,15 @@ import NavigationPanel from '../components/Map/NavigationPanel';
 import PcoDetailPanel from '../components/Gpon/PcoDetailPanel';
 import SplitterDetailPanel from '../components/Gpon/SplitterDetailPanel'; 
 import JointDetailPanel from '../components/Gpon/JointDetailPanel'; 
-import BoardDetailPanel from '../components/Gpon/BoardDetailPanel'; // NEW
+import BoardDetailPanel from '../components/Gpon/BoardDetailPanel'; 
+import CableDetailPanel from '../components/Gpon/CableDetailPanel'; // NEW
 import EquipmentDetailPanel from '../components/Map/EquipmentDetailPanel';
 import FiberTracePanel from '../components/Trace/FiberTracePanel'; 
 import TraceLayer from '../components/Map/TraceLayer';
 import { DEFAULT_VIEW_STATE } from '../constants';
 import { Layers, Locate, AlertCircle, ChevronDown, Network, X, Cable } from 'lucide-react';
 import { useGeolocation } from '../lib/gis/useGeolocation';
-import { Coordinates, PhysicalEntity, RouteDetails, EquipmentType, PCO, Splitter, NetworkEntity, Equipment } from '../types';
+import { Coordinates, PhysicalEntity, RouteDetails, EquipmentType, PCO, Splitter, NetworkEntity, Equipment, FiberCable } from '../types';
 import { useNetwork } from '../context/NetworkContext';
 import { getRoute } from '../lib/gis/routing';
 import { useTranslation } from 'react-i18next';
@@ -34,7 +35,7 @@ const MapPage: React.FC = () => {
   const [addLocation, setAddLocation] = useState<Coordinates | null>(null);
   const [addParentEntity, setAddParentEntity] = useState<NetworkEntity | null>(null);
 
-  const [selectedEntity, setSelectedEntity] = useState<PhysicalEntity | null>(null);
+  const [selectedEntity, setSelectedEntity] = useState<PhysicalEntity | FiberCable | null>(null);
   const [route, setRoute] = useState<RouteDetails | null>(null);
   const [routeProfile, setRouteProfile] = useState<'driving' | 'walking'>('driving');
   
@@ -50,18 +51,21 @@ const MapPage: React.FC = () => {
   const [shouldRecenter, setShouldRecenter] = useState(false);
   const [searchResult, setSearchResult] = useState<{location: Coordinates; label: string} | null>(null);
 
+  // Re-calculate route if profile changes AND we already have a route active
   useEffect(() => {
-    const calculateRoute = async () => {
-      if (selectedEntity && selectedEntity.location && userCoords) {
-        const routeData = await getRoute(userCoords, selectedEntity.location, routeProfile);
-        setRoute(routeData);
-      } else {
-        setRoute(null);
-      }
-    };
+    if (route && selectedEntity && (selectedEntity as PhysicalEntity).location && userCoords) {
+        handleNavigate(); // Refresh route calculation
+    }
+  }, [routeProfile]);
 
-    calculateRoute();
-  }, [selectedEntity, userCoords, routeProfile]);
+  const handleNavigate = async () => {
+      // Type guard for PhysicalEntity
+      const entity = selectedEntity as any;
+      if (entity && entity.location && userCoords) {
+        const routeData = await getRoute(userCoords, entity.location, routeProfile);
+        setRoute(routeData);
+      }
+  };
 
   const handleSearchResult = (result: any) => {
     if (result) {
@@ -114,10 +118,12 @@ const MapPage: React.FC = () => {
       setAddModalOpen(true);
   };
 
-  const handleEquipmentSelect = (entity: PhysicalEntity) => {
+  const handleEquipmentSelect = (entity: PhysicalEntity | FiberCable) => {
     if (isDrawingCable) return; 
     setSelectedEntity(entity);
     setHighlightClientId(null);
+    // Reset route when selecting new entity
+    setRoute(null);
   };
 
   const handleQuitNavigation = () => {
@@ -148,6 +154,7 @@ const MapPage: React.FC = () => {
       setCenter(entity.location);
       setShouldRecenter(true);
       setSelectedEntity(entity); 
+      setRoute(null); // Clear previous route
       setTimeout(() => setShouldRecenter(false), 500);
     } 
 
@@ -261,7 +268,7 @@ const MapPage: React.FC = () => {
         </div>
 
         <NavigationPanel 
-          destination={selectedEntity} 
+          destination={selectedEntity && 'location' in selectedEntity ? (selectedEntity as PhysicalEntity) : null} 
           route={route}
           onClose={() => setSelectedEntity(null)}
           onProfileChange={setRouteProfile}
@@ -271,22 +278,30 @@ const MapPage: React.FC = () => {
         {/* Detail Panels Logic */}
         {selectedEntity && !isDrawingCable && !isTracing && (
             <>
-                {selectedEntity.type === EquipmentType.PCO ? (
+                {selectedEntity.type === EquipmentType.CABLE ? (
+                    <CableDetailPanel 
+                        cable={selectedEntity as FiberCable}
+                        onClose={() => setSelectedEntity(null)}
+                    />
+                ) : selectedEntity.type === EquipmentType.PCO ? (
                     <PcoDetailPanel 
                         pco={selectedEntity as PCO}
                         onClose={() => setSelectedEntity(null)}
+                        onNavigate={handleNavigate}
                         defaultSelectedClientId={highlightClientId}
                     />
                 ) : selectedEntity.type === EquipmentType.SPLITTER ? (
                     <SplitterDetailPanel 
                         splitter={selectedEntity as Splitter}
                         onClose={() => setSelectedEntity(null)}
+                        onNavigate={handleNavigate}
                         onSelectPco={(pco) => setSelectedEntity(pco)}
                     />
                 ) : selectedEntity.type === EquipmentType.JOINT ? (
                     <JointDetailPanel
                         joint={selectedEntity as Equipment}
                         onClose={() => setSelectedEntity(null)}
+                        onNavigate={handleNavigate}
                     />
                 ) : selectedEntity.type === EquipmentType.BOARD ? (
                     <BoardDetailPanel 
@@ -295,8 +310,9 @@ const MapPage: React.FC = () => {
                     />
                 ) : (
                     <EquipmentDetailPanel 
-                        entity={selectedEntity}
+                        entity={selectedEntity as NetworkEntity}
                         onClose={() => setSelectedEntity(null)}
+                        onNavigate={handleNavigate}
                         onAddChild={handleAddChildRequest}
                         onSelectEntity={(e) => handleEquipmentSelect(e as PhysicalEntity)}
                     />
@@ -321,7 +337,7 @@ const MapPage: React.FC = () => {
               searchLocation={searchResult}
               onAddEquipment={handleAddEquipmentRequest}
               onEquipmentSelect={handleEquipmentSelect}
-              selectedEntity={selectedEntity}
+              selectedEntity={selectedEntity as PhysicalEntity} // Type cast okay as cables are handled via onCableClick in CableLayer but passed up here
               route={route}
               
               isDrawingMode={isDrawingCable}

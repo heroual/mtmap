@@ -161,7 +161,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ onSelectResult }) => {
       </div>
 
       {isOpen && results.length > 0 && (
-        <div className="absolute top-full left-0 mt-2 w-full glass-panel border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden shadow-2xl max-h-[70vh] overflow-y-auto bg-white dark:bg-slate-900">
+        <div className="absolute top-full left-0 mt-2 w-full glass-panel border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden shadow-2xl max-h-[50vh] md:max-h-[70vh] overflow-y-auto bg-white dark:bg-slate-900">
           {results.map((result, idx) => (
             <button
               key={idx}

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cable, Save, X, ArrowRight, AlertTriangle, CheckCircle2, Route, Settings2, Loader2, PenTool, MousePointer2, Server, ChevronRight, CircuitBoard, Network, Zap, Activity, Link as LinkIcon, Spline } from 'lucide-react';
+import { Cable, Save, X, ArrowRight, AlertTriangle, CheckCircle2, Route, Settings2, Loader2, PenTool, MousePointer2, Server, ChevronRight, CircuitBoard, Network, Zap, Activity, Link as LinkIcon, Spline, Lock } from 'lucide-react';
 import { useNetwork } from '../../context/NetworkContext';
 import { EquipmentType, CableType, CableCategory, PhysicalEntity, EquipmentStatus, Coordinates, InstallationMode, Equipment } from '../../types';
 import { CablingRules } from '../../lib/cabling-rules';
@@ -323,9 +323,6 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
         return;
     }
 
-    // 1. Create Chambers (Same as before)
-    // ... [Chamber Creation Logic omitted for brevity, exact copy of original] ...
-
     const cableId = crypto.randomUUID();
     const fiberCount = CablingRules.getFiberCount(cableType);
 
@@ -335,12 +332,10 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
     const sourceEquip = equipments.find(e => e.id === rootId);
     let sourceUpdates: any = {};
 
-    // Logic: If PCO (Distribution), map N fibers. If Splitter (Transport), map 1 fiber.
     for (let i = 0; i < mappingConfig.count; i++) {
         const currentFiber = mappingConfig.startFiber + i;
         if (currentFiber > fiberCount) break;
 
-        // Determine destination logical ID (PCO Port vs Splitter Input)
         let destPortId = '';
         let destLabel = endEntity?.name || endId;
 
@@ -351,7 +346,6 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
             destLabel = `${endEntity?.name} (Uplink)`;
         }
 
-        // Cable Side Metadata
         cableFibers[currentFiber] = {
             status: 'USED',
             upstreamId: sourceEquip ? startId : 'UNKNOWN',
@@ -359,13 +353,7 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
             downstreamPort: destPortId
         };
 
-        // Source Equipment Side Metadata (If Start is OLT/MSAN Port)
         if (sourceEquip && startId.includes('::P::')) {
-            // For PCO distribution, assume Source Port maps to Fiber 1, 
-            // BUT usually OLT Port -> 1 Fiber -> Splitter.
-            // If connecting OLT -> PCO (P2P), we might need multiple OLT ports? 
-            // Simplification: We map the *Selected Source Port* to *Fiber 1* of this cable.
-            // Subsequent fibers (2-8) might be unpatched at source unless specified.
             if (i === 0) {
                 const currentConnections = sourceEquip.metadata?.connections || {};
                 sourceUpdates = {
@@ -388,21 +376,13 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
         });
     }
 
-    // Destination PCO Update (If Distribution)
-    if (endEntity?.type === EquipmentType.PCO) {
-        // We assume fibers map 1:1 to PCO ports 1..N
-        // Update PCO metadata to show ports as connected to this cable
-        // This is implicit in the cable metadata, but explicit on PCO is better for reverse lookup
-        // (Handled by PcoDetailPanel/SplitterPanel usually, but good to init here)
-    }
-
-    // 3. Create Cable
+    // 3. Create Cable with AUTO-CLASSIFIED Category
     await addCable({
         id: cableId,
         name: name,
         type: EquipmentType.CABLE,
         cableType,
-        category: validation.category || CableCategory.DISTRIBUTION,
+        category: validation.category || CableCategory.DISTRIBUTION, // Forced by Rules
         fiberCount: fiberCount,
         lengthMeters: distance,
         status: EquipmentStatus.PLANNED,
@@ -411,7 +391,7 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
         path: routeGeometry,
         installationMode: installMode,
         metadata: {
-            fibers: cableFibers // Store the mapping map
+            fibers: cableFibers
         }
     });
     
@@ -504,9 +484,23 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
                       {validation.valid ? <CheckCircle2 size={24} className="shrink-0" /> : <AlertTriangle size={24} className="shrink-0" />}
                       <div>
                           <div className="font-bold text-base">{validation.valid ? t('cable.validation_valid') : (startId && endId ? t('cable.validation_invalid') : 'Select Endpoints')}</div>
-                          <div className="opacity-80 text-xs mt-1">{validation.reason || (validation.valid ? `Topology verified as ${validation.category}.` : 'Please select valid start and end points.')}</div>
+                          <div className="opacity-80 text-xs mt-1">{validation.reason || (validation.valid ? `Topology verified.` : 'Please select valid start and end points.')}</div>
                       </div>
                   </div>
+
+                  {/* AUTO CLASSIFICATION BADGE */}
+                  {validation.valid && validation.category && (
+                      <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                          validation.category === CableCategory.TRANSPORT 
+                          ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400'
+                          : 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-400'
+                      }`}>
+                          <span className="text-xs font-bold uppercase flex items-center gap-2">
+                              <Lock size={12} /> {validation.category}
+                          </span>
+                          <span className="text-[10px] opacity-70">Auto-Detected</span>
+                      </div>
+                  )}
 
                   {/* Manual Drawing Trigger */}
                   {mode === 'MANUAL' && (
@@ -535,61 +529,6 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
                                   </button>
                               </div>
                           )}
-                      </div>
-                  )}
-
-                  {/* Fiber Mapping Section - New Professional Design */}
-                  {validation.valid && (
-                      <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                          <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
-                                  <Zap size={14} className="text-amber-500" /> Mapping Strategy
-                              </h4>
-                              <div className="px-2 py-0.5 bg-slate-200 dark:bg-slate-800 rounded text-[10px] font-mono">
-                                  {totalFiberCount} Fibers
-                              </div>
-                          </div>
-                          
-                          <div className="flex gap-4 mb-4">
-                              <div className="flex-1">
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">Start Fiber Index</label>
-                                  <input 
-                                    type="number" min="1" max={totalFiberCount}
-                                    value={mappingConfig.startFiber}
-                                    onChange={e => setMappingConfig({...mappingConfig, startFiber: parseInt(e.target.value) || 1})}
-                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-sm text-center font-bold outline-none focus:border-cyan-500"
-                                  />
-                              </div>
-                              <div className="flex-1">
-                                  <label className="block text-[10px] font-bold text-slate-400 mb-1">Strands to Map</label>
-                                  <input 
-                                    type="number" min="1" max={totalFiberCount}
-                                    value={mappingConfig.count}
-                                    onChange={e => setMappingConfig({...mappingConfig, count: parseInt(e.target.value) || 1})}
-                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-sm text-center font-bold outline-none focus:border-cyan-500"
-                                  />
-                              </div>
-                          </div>
-
-                          {/* Visual Matrix */}
-                          <div className="space-y-1">
-                              {Array.from({length: Math.min(mappingConfig.count, 8)}).map((_, i) => {
-                                  const fiberNum = mappingConfig.startFiber + i;
-                                  if (fiberNum > totalFiberCount) return null;
-                                  return (
-                                      <div key={i} className="flex items-center gap-2 text-xs">
-                                          <div className="w-16 text-right font-mono text-slate-500">Fiber #{fiberNum}</div>
-                                          <ArrowRight size={12} className="text-slate-300" />
-                                          <div className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-300 font-medium truncate">
-                                              {endEntity?.type === EquipmentType.PCO ? `${endEntity.name} (Port ${i+1})` : `${endEntity?.name} (Uplink)`}
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                              {mappingConfig.count > 8 && (
-                                  <div className="text-[10px] text-center text-slate-400 pt-1 italic">... and {mappingConfig.count - 8} more</div>
-                              )}
-                          </div>
                       </div>
                   )}
 

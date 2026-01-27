@@ -225,6 +225,7 @@ export const fr = {
     distance: "Distance",
     from_location: "Depuis votre position",
     go_now: "Y ALLER",
+    route_btn: "Trajet",
     calculating: "Calcul itinéraire...",
     cancel_route: "Annuler Route",
     driving: "Mode Voiture",
@@ -281,7 +282,7 @@ export const fr = {
     generate_wo: "Générer Ordre de Travail",
     click_mode: "Mode clic actif",
     reset: "Réinitialiser / Nouvelle Recherche",
-    select_on_map: "Select on Map"
+    select_on_map: "Sélectionner sur Carte"
   },
   inventory: {
     title: "Gestion des Équipements",

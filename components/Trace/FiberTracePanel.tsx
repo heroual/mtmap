@@ -11,8 +11,8 @@ const FiberTracePanel: React.FC = () => {
   if (!traceResult && !isTracing) return null;
 
   return (
-    <div className="absolute top-4 right-4 z-[500] w-[380px] animate-in slide-in-from-right-4 duration-300 flex flex-col max-h-[calc(100%-2rem)]">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
+    <div className="absolute z-[500] flex flex-col w-full md:w-[380px] h-[50vh] md:h-auto md:max-h-[calc(100%-2rem)] bottom-0 md:bottom-auto md:top-4 md:right-4 animate-in slide-in-from-bottom-10 md:slide-in-from-right-4 duration-300">
+      <div className="bg-white dark:bg-slate-950 rounded-t-2xl md:rounded-2xl border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
         
         {/* Header */}
         <div className="p-4 bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700 flex justify-between items-center shrink-0 text-white">

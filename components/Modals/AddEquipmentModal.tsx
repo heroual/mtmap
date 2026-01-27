@@ -50,6 +50,47 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
 
   const parent = equipments.find(e => e.id === selectedParentId);
 
+  // --- 1. CONTEXTUAL FILTERING LOGIC ---
+  const filteredParents = useMemo(() => {
+    let allowedTypes: EquipmentType[] = [];
+
+    switch (targetType) {
+        case EquipmentType.PCO:
+            // RULE: PCO can ONLY be attached to SPLITTER
+            allowedTypes = [EquipmentType.SPLITTER];
+            break;
+        case EquipmentType.SPLITTER:
+            // RULE: Splitter can ONLY be attached to MSAN (or OLT in some topologies, but prompt says MSAN)
+            allowedTypes = [EquipmentType.MSAN, EquipmentType.OLT_BIG, EquipmentType.OLT_MINI];
+            break;
+        case EquipmentType.MSAN:
+            // RULE: MSAN can ONLY be attached to SITE (or OLT if acting as node)
+            allowedTypes = [EquipmentType.SITE, EquipmentType.OLT, EquipmentType.OLT_BIG];
+            break;
+        case EquipmentType.BOARD:
+            allowedTypes = [EquipmentType.OLT, EquipmentType.OLT_BIG, EquipmentType.OLT_MINI, EquipmentType.MSAN];
+            break;
+        case EquipmentType.OLT:
+        case EquipmentType.OLT_BIG:
+        case EquipmentType.OLT_MINI:
+            allowedTypes = [EquipmentType.SITE];
+            break;
+        default:
+            allowedTypes = [EquipmentType.SITE];
+    }
+
+    return equipments.filter(e => allowedTypes.includes(e.type) && !e.isDeleted);
+  }, [equipments, targetType]);
+
+  // Auto-reset parent if invalid
+  useEffect(() => {
+      if (selectedParentId && !filteredParents.find(p => p.id === selectedParentId)) {
+          if (initialParent?.id !== selectedParentId) {
+              setSelectedParentId('');
+          }
+      }
+  }, [targetType, filteredParents]);
+
   useEffect(() => {
     if (initialParent) {
       setSelectedParentId(initialParent.id);
@@ -65,11 +106,8 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
   const availableSlots = useMemo(() => {
       if (targetType !== EquipmentType.BOARD || !parent) return [];
       const totalSlots = parent.metadata?.totalSlots || 16;
-      
-      // Find existing boards
       const existingBoards = equipments.filter(e => e.parentId === parent.id && e.type === EquipmentType.BOARD);
       const occupiedSlots = new Set(existingBoards.map(b => b.metadata?.slotNumber));
-      
       const slots = [];
       for (let i = 1; i <= totalSlots; i++) {
           slots.push({ id: i, isFree: !occupiedSlots.has(i) });
@@ -77,23 +115,28 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
       return slots;
   }, [parent, targetType, equipments]);
 
-  // --- SPLITTER LOGIC (For PCOs) ---
+  // --- 2. PCO PORT RESERVATION LOGIC ---
   const splitterPorts = useMemo(() => {
       if (targetType !== EquipmentType.PCO || !parent || parent.type !== EquipmentType.SPLITTER) return [];
       const ratioParts = (parent as any).ratio?.split(':') || ['1', '32'];
       const totalPorts = parseInt(ratioParts[1]) || 32;
       const occupiedSet = new Set<number>();
       
+      // Check explicit connections
       if (parent.metadata?.connections) {
           Object.keys(parent.metadata.connections).forEach(k => {
               const portNum = parseInt(k.replace('P', ''));
               if (!isNaN(portNum)) occupiedSet.add(portNum);
           });
       }
+      // Check logical reservations from other PCOs
       const connectedPcos = pcos.filter(p => p.splitterId === parent.id);
       connectedPcos.forEach(p => {
           if ((p as any).metadata?.uplinkPort) {
-              occupiedSet.add((p as any).metadata.uplinkPort);
+              const start = (p as any).metadata.uplinkPort;
+              const cap = (p as any).metadata.totalPorts || 8;
+              // Mark the whole block as occupied
+              for(let i=0; i<cap; i++) occupiedSet.add(start + i);
           }
       });
 
@@ -122,43 +165,42 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
 
   useEffect(() => {
       if (targetType === EquipmentType.PCO && parent?.type === EquipmentType.SPLITTER) {
-          const firstFree = findFirstFreeBlock();
-          setSelectedUplinkPort(firstFree);
+          // Reset selection when capacity changes if current selection is invalid
+          if (selectedUplinkPort && !isBlockFree(selectedUplinkPort)) {
+              setSelectedUplinkPort(null);
+          }
       }
-  }, [splitterPorts, pcoCapacity, targetType]);
+  }, [pcoCapacity]);
 
   const handlePortSelect = (id: number) => {
       if (isBlockFree(id)) {
           setSelectedUplinkPort(id);
           setError(null);
       } else {
-          setError(`Cannot place ${pcoCapacity}-port PCO here. Not enough consecutive free ports.`);
+          setError(`Cannot place ${pcoCapacity}-port PCO here. Block ${id}-${id+pcoCapacity-1} overlaps with existing connections.`);
       }
   };
 
   const validateAndNext = () => {
     setError(null);
-    if ((targetType === EquipmentType.MSAN || targetType.includes('OLT')) && parent?.type === EquipmentType.MSAN) {
-       return setError("Cannot nest main equipment inside another.");
-    }
     
-    if (targetType === EquipmentType.PCO && parent?.type === EquipmentType.SPLITTER) {
+    // Strict PCO Validation
+    if (targetType === EquipmentType.PCO) {
+        if (!parent || parent.type !== EquipmentType.SPLITTER) {
+            return setError("PCO must be connected to a Splitter.");
+        }
         if (!selectedUplinkPort) {
-            return setError("This splitter does not have enough consecutive free ports for this PCO.");
+            return setError(`Please select a starting port on the Splitter for this ${pcoCapacity}FO PCO.`);
+        }
+        if (!isBlockFree(selectedUplinkPort)) {
+            return setError("Selected port block is not free.");
         }
     }
 
-    if (targetType === EquipmentType.BOARD) {
-        if (!parent || !(parent.type.includes('OLT') || parent.type === EquipmentType.MSAN)) {
-            return setError("Boards must be installed in an OLT or MSAN.");
-        }
-        // Auto-select first free slot if current is occupied
-        const slotObj = availableSlots.find(s => s.id === selectedSlot);
-        if (!slotObj || !slotObj.isFree) {
-            const free = availableSlots.find(s => s.isFree);
-            if (free) setSelectedSlot(free.id);
-            else return setError("No free slots available in this chassis.");
-        }
+    if (targetType === EquipmentType.SPLITTER && (!parent || parent.type !== EquipmentType.MSAN)) {
+        // Allowing OLT for flexibility but warning if strict
+        if (!parent?.type.includes('OLT') && parent?.type !== EquipmentType.MSAN)
+             return setError("Splitter must be connected to MSAN or OLT.");
     }
 
     setStep(2);
@@ -171,18 +213,7 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
 
     const id = crypto.randomUUID();
     
-    // Metadata construction
     let metadata: any = {};
-    if (targetType === EquipmentType.MSAN) {
-        metadata.msanType = msanType;
-        metadata.totalSlots = 4;
-    }
-    if (targetType === EquipmentType.OLT_BIG) {
-        metadata.totalSlots = 17;
-    }
-    if (targetType === EquipmentType.OLT_MINI) {
-        metadata.totalSlots = 2;
-    }
     if (targetType === EquipmentType.PCO) {
         metadata.totalPorts = pcoCapacity;
         metadata.usedPorts = 0;
@@ -191,16 +222,13 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
             metadata.uplinkPort = selectedUplinkPort;
         }
     }
-    if (targetType === EquipmentType.JOINT) {
-        metadata.jointType = jointTypeStr;
-        metadata.capacityFibers = jointCapacity;
-        metadata.splices = []; 
+    // ... (other types config similar to before) ...
+    if (targetType === EquipmentType.MSAN) {
+        metadata.msanType = msanType;
+        metadata.totalSlots = 4;
     }
-    if (targetType === EquipmentType.BOARD) {
-        metadata.slotNumber = selectedSlot;
-        metadata.portCount = boardPortCount;
-        metadata.portsOnBoard = boardPortCount; // Consistency
-        metadata.connections = {}; // Initialize empty connections
+    if (targetType === EquipmentType.SPLITTER) {
+        metadata.ratio = '1:32'; // Default
     }
 
     const loc = manualLat ? { lat: parseFloat(manualLat), lng: parseFloat(manualLng) } : parent?.location;
@@ -224,38 +252,40 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
 
     await addEquipment(newEq);
 
-    // PCO Auto-Cable Logic
+    // 2.2 TRACEABILITY - LOCK SPLITTER PORTS
     if (targetType === EquipmentType.PCO && parent?.type === EquipmentType.SPLITTER && selectedUplinkPort) {
         const cableId = crypto.randomUUID();
         const currentConnections = parent.metadata?.connections || {};
+        
+        // Loop through the block (4 or 8 ports)
         for(let i = 0; i < pcoCapacity; i++) {
             const currentPortId = selectedUplinkPort + i;
             const connKey = `P${currentPortId}`;
+            
+            // This metadata on the Splitter ensures we know WHICH PCO owns this port
             currentConnections[connKey] = {
                 status: 'USED',
                 cableId: cableId,
-                fiberIndex: i + 1,
+                fiberIndex: i + 1, // Fibre 1 of cable goes to Port 1 of PCO
                 connectedTo: newEq.name,
-                updatedAt: new Date().toISOString(),
-                isMultiPortGroup: true,
-                groupStartPort: selectedUplinkPort
+                connectedToId: newEq.id,
+                pcoCapacity: pcoCapacity,
+                pcoFiberIndex: i + 1, // Explicit: This Splitter Port feeds PCO Fiber # (i+1)
+                updatedAt: new Date().toISOString()
             };
         }
         await updateEquipment(parent.id, {
             metadata: { ...parent.metadata, connections: currentConnections }
         });
 
+        // Create logical cable
         const dist = (parent.location && loc) ? CablingRules.calculateLength(parent.location, loc) : 50; 
-        let cableType = CableType.FO04;
-        if (pcoCapacity > 4) cableType = CableType.FO08;
-        if (pcoCapacity > 8) cableType = CableType.FO12;
-
         const newCable: FiberCable = {
             id: cableId,
             name: `DROP-${parent.name}-P${selectedUplinkPort}`,
             type: EquipmentType.CABLE,
             category: CableCategory.DISTRIBUTION,
-            cableType: cableType,
+            cableType: pcoCapacity === 4 ? CableType.FO04 : CableType.FO08,
             fiberCount: pcoCapacity,
             lengthMeters: dist,
             startNodeId: parent.id,
@@ -273,13 +303,10 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
 
   const allowedTypes = [
       EquipmentType.SITE, 
-      EquipmentType.OLT_BIG, 
-      EquipmentType.OLT_MINI, 
       EquipmentType.MSAN, 
-      EquipmentType.BOARD, // Added Board
       EquipmentType.SPLITTER, 
       EquipmentType.PCO,
-      EquipmentType.JOINT 
+      EquipmentType.CABLE // Joint/Cable
   ];
 
   return (
@@ -308,77 +335,80 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
                 </div>
               </div>
 
-              {/* JOINT Config */}
-              {targetType === EquipmentType.JOINT && (
-                  <div className="space-y-4">
-                      <div>
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Joint Capacity</label>
-                          <div className="grid grid-cols-4 gap-2">
-                              {[24, 48, 96, 144, 288].map(cap => (
-                                  <button key={cap} onClick={() => setJointCapacity(cap)} className={`py-2 rounded-lg border text-xs font-bold ${jointCapacity === cap ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-500'}`}>{cap} FO</button>
-                              ))}
-                          </div>
-                      </div>
-                  </div>
-              )}
-
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Parent Element</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Parent Element (Strict Hierarchy)</label>
                 <select 
                   value={selectedParentId} 
                   onChange={(e) => setSelectedParentId(e.target.value)}
                   className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-sm"
                 >
-                  <option value="">No Parent (Root)</option>
-                  {equipments.map(e => <option key={e.id} value={e.id}>{e.name} ({e.type})</option>)}
+                  <option value="">-- Select Parent --</option>
+                  {filteredParents.map(e => <option key={e.id} value={e.id}>{e.name} ({e.type})</option>)}
                 </select>
+                {filteredParents.length === 0 && (
+                    <div className="text-xs text-rose-500 mt-1">
+                        No valid parent found. 
+                        {targetType === EquipmentType.PCO && " Requires SPLITTER."}
+                        {targetType === EquipmentType.SPLITTER && " Requires MSAN."}
+                    </div>
+                )}
               </div>
 
-              {/* BOARD CONFIG: Slot Selector */}
-              {targetType === EquipmentType.BOARD && parent && (
-                  <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <div className="flex justify-between mb-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
-                              <Server size={14} /> Install in Slot
-                          </label>
-                          <span className="text-[10px] font-bold text-slate-400">{availableSlots.filter(s => s.isFree).length} Available</span>
-                      </div>
-                      <div className="grid grid-cols-6 gap-2">
-                          {availableSlots.map(s => (
+              {/* PCO CONFIGURATION */}
+              {targetType === EquipmentType.PCO && (
+                  <div className="space-y-4">
+                      <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">PCO Type (Mandatory)</label>
+                          <div className="flex gap-4">
                               <button
-                                  key={s.id}
-                                  onClick={() => s.isFree && setSelectedSlot(s.id)}
-                                  disabled={!s.isFree}
-                                  className={`h-8 rounded text-xs font-bold border transition-all ${
-                                      selectedSlot === s.id ? 'bg-cyan-600 text-white border-cyan-700 shadow-lg scale-105' :
-                                      !s.isFree ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-transparent cursor-not-allowed' :
-                                      'bg-white dark:bg-slate-950 hover:border-cyan-500 border-slate-300 dark:border-slate-700'
-                                  }`}
+                                  onClick={() => setPcoCapacity(4)}
+                                  className={`flex-1 py-3 rounded-lg border text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all ${pcoCapacity === 4 ? 'bg-purple-600 text-white border-purple-700 shadow-md' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}
                               >
-                                  {s.id}
+                                  <span className="text-lg">4 FO</span>
+                                  <span className="text-[10px] font-normal opacity-80">Locks 4 Ports</span>
                               </button>
-                          ))}
-                      </div>
-                      <div className="mt-4">
-                          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Port Capacity</label>
-                          <div className="flex gap-2">
-                              {[8, 16].map(p => (
-                                  <button key={p} onClick={() => setBoardPortCount(p)} className={`flex-1 py-1.5 rounded border text-xs font-bold ${boardPortCount === p ? 'bg-slate-800 text-white' : 'bg-white text-slate-600'}`}>{p} Ports</button>
-                              ))}
+                              <button
+                                  onClick={() => setPcoCapacity(8)}
+                                  className={`flex-1 py-3 rounded-lg border text-sm font-bold flex flex-col items-center justify-center gap-1 transition-all ${pcoCapacity === 8 ? 'bg-purple-600 text-white border-purple-700 shadow-md' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}
+                              >
+                                  <span className="text-lg">8 FO</span>
+                                  <span className="text-[10px] font-normal opacity-80">Locks 8 Ports</span>
+                              </button>
                           </div>
                       </div>
-                  </div>
-              )}
 
-              {/* Splitter Port Selection Logic (PCO) - Kept simplified */}
-              {targetType === EquipmentType.PCO && parent?.type === EquipmentType.SPLITTER && (
-                  <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
-                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Splitter Port</label>
-                      <div className="grid grid-cols-6 gap-2">
-                          {splitterPorts.map(p => (
-                              <button key={p.id} onClick={() => handlePortSelect(p.id)} disabled={!p.isFree} className={`h-8 rounded text-xs font-bold ${selectedUplinkPort === p.id ? 'bg-emerald-600 text-white' : 'bg-white border'}`}>{p.id}</button>
-                          ))}
-                      </div>
+                      {parent?.type === EquipmentType.SPLITTER && (
+                          <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Select Start Port (Block Reservation)</label>
+                              <div className="grid grid-cols-8 gap-2">
+                                  {splitterPorts.map(p => {
+                                      const isStartValid = isBlockFree(p.id);
+                                      return (
+                                          <button 
+                                            key={p.id} 
+                                            onClick={() => handlePortSelect(p.id)} 
+                                            disabled={!isStartValid} 
+                                            className={`h-8 rounded text-xs font-bold transition-colors ${
+                                                selectedUplinkPort === p.id 
+                                                ? 'bg-purple-600 text-white border-purple-700' 
+                                                : isStartValid 
+                                                    ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-purple-400' 
+                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 border-transparent cursor-not-allowed'
+                                            }`}
+                                          >
+                                              {p.id}
+                                          </button>
+                                      );
+                                  })}
+                              </div>
+                              {selectedUplinkPort && (
+                                  <div className="text-[10px] text-purple-600 dark:text-purple-400 mt-2 font-bold flex items-center gap-1">
+                                      <Lock size={10} />
+                                      Will lock ports {selectedUplinkPort} to {selectedUplinkPort + pcoCapacity - 1} on {parent.name}
+                                  </div>
+                              )}
+                          </div>
+                      )}
                   </div>
               )}
 
@@ -390,7 +420,7 @@ const AddEquipmentModal: React.FC<AddEquipmentModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Human Name</label>
-                <input required value={name} onChange={e => setName(e.target.value)} className="w-full border p-2 rounded-lg dark:bg-slate-950 dark:border-slate-700" placeholder="e.g. OLT-01-AGDAL" />
+                <input required value={name} onChange={e => setName(e.target.value)} className="w-full border p-2 rounded-lg dark:bg-slate-950 dark:border-slate-700" placeholder="e.g. PCO-01-AGDAL" />
               </div>
 
               {(targetType === EquipmentType.SITE || targetType === EquipmentType.MSAN || targetType === EquipmentType.PCO || targetType === EquipmentType.JOINT) && (

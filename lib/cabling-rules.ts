@@ -24,6 +24,7 @@ export const CablingRules = {
 
   /**
    * Validate if two entities can be connected by fiber
+   * AND automatically determine the hierarchy (Transport vs Distribution)
    */
   validateConnection: (start: NetworkEntity, end: NetworkEntity): ConnectionCheck => {
     if (start.id === end.id) {
@@ -33,68 +34,64 @@ export const CablingRules = {
     const t1 = start.type;
     const t2 = end.type;
 
-    // --- 1. HIERARCHY CONNECTIONS (OLT/MSAN Port -> Downstream) ---
-
-    // GPON_PORT -> SPLITTER (Feeder/Transport)
-    // FIX: This is the Feeder segment, so it should be TRANSPORT (Blue)
-    if (t1 === EquipmentType.GPON_PORT && t2 === EquipmentType.SPLITTER) {
-        return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
-    }
-    // GPON_PORT -> JOINT (Transport/Feeder)
-    if (t1 === EquipmentType.GPON_PORT && t2 === EquipmentType.JOINT) {
-        return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
-    }
-    // GPON_PORT -> PCO (Direct connect - rare but possible)
-    if (t1 === EquipmentType.GPON_PORT && t2 === EquipmentType.PCO) {
-        return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
-    }
-
-    // --- 2. LEGACY/GENERIC CONNECTIONS (Backwards compatibility) ---
-
-    // SITE -> JOINT (Transport)
-    if ((t1 === EquipmentType.SITE && t2 === EquipmentType.JOINT) || 
-        (t1 === EquipmentType.JOINT && t2 === EquipmentType.SITE)) {
-      return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
-    }
-
-    // SITE -> MSAN (Transport)
-    if ((t1 === EquipmentType.SITE && t2 === EquipmentType.MSAN) || 
-        (t1 === EquipmentType.MSAN && t2 === EquipmentType.SITE)) {
-      return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
-    }
-
-    // JOINT -> JOINT (Transport)
-    if (t1 === EquipmentType.JOINT && t2 === EquipmentType.JOINT) {
-      return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
-    }
-
-    // JOINT -> PCO (Distribution)
-    if ((t1 === EquipmentType.JOINT && t2 === EquipmentType.PCO) ||
-        (t1 === EquipmentType.PCO && t2 === EquipmentType.JOINT)) {
-      return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
-    }
+    // --- AUTOMATIC CLASSIFICATION RULES ---
     
-    // JOINT -> MSAN Outdoor
-    if ((t1 === EquipmentType.JOINT && t2 === EquipmentType.MSAN) ||
-        (t1 === EquipmentType.MSAN && t2 === EquipmentType.JOINT)) {
-      return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
+    // 1. TRANSPORT LAYER (Backbone/Feeder)
+    // Starts at Site/OLT/MSAN. Ends at Splitter Input.
+    // Can pass through Joints/Chambers.
+    
+    // Rule: If Source is High Level (Site/OLT/MSAN) -> Always Transport
+    if (t1 === EquipmentType.SITE || t1 === EquipmentType.OLT || t1 === EquipmentType.OLT_BIG || t1 === EquipmentType.OLT_MINI || t1 === EquipmentType.MSAN || t1 === EquipmentType.GPON_PORT) {
+        // Restriction: Cannot go directly to PCO (Distribution) without a splitter
+        if (t2 === EquipmentType.PCO) {
+            return { valid: false, reason: 'Invalid Topology: MSAN/OLT cannot connect directly to PCO (Distribution). Must go through a Splitter.' };
+        }
+        return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
     }
 
-    // SPLITTER -> PCO (Distribution)
-    if (t1 === EquipmentType.SPLITTER && t2 === EquipmentType.PCO) {
+    // Rule: If Destination is Splitter -> Always Transport (Feeder cable entering the splitter)
+    if (t2 === EquipmentType.SPLITTER) {
+        // Except if source is PCO (Reverse? Invalid)
+        if (t1 === EquipmentType.PCO) {
+             return { valid: false, reason: 'Invalid Topology: PCO cannot feed a Splitter.' };
+        }
+        return { valid: true, suggestedCategory: CableCategory.TRANSPORT };
+    }
+
+    // 2. DISTRIBUTION LAYER (Drop/Access)
+    // Starts at Splitter Output. Ends at PCO/Subscriber.
+    
+    // Rule: If Source is Splitter -> Always Distribution
+    if (t1 === EquipmentType.SPLITTER) {
+        // Restriction: Splitter cannot feed OLT (Loop)
+        if (t2 === EquipmentType.OLT || t2 === EquipmentType.MSAN || t2 === EquipmentType.SITE) {
+            return { valid: false, reason: 'Invalid Topology: Splitter cannot feed upstream equipment.' };
+        }
         return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
     }
-    // SPLITTER -> JOINT (Distribution)
-    if ((t1 === EquipmentType.SPLITTER && t2 === EquipmentType.JOINT) || (t1 === EquipmentType.JOINT && t2 === EquipmentType.SPLITTER)) {
+
+    // Rule: If Destination is PCO -> Always Distribution
+    if (t2 === EquipmentType.PCO) {
         return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
     }
 
-    // PCO -> PCO (Daisy Chain - usually discouraged)
-    if (t1 === EquipmentType.PCO && t2 === EquipmentType.PCO) {
-        return { valid: false, reason: 'Daisy-chaining PCOs is not recommended in this architecture.' };
+    // 3. INTERMEDIATE (Joint -> Joint / Chamber -> Chamber)
+    // This is context-dependent.
+    // If we are here, neither endpoint defines the hierarchy clearly (e.g. Joint -> Joint).
+    // In strict mode, we default to Distribution unless proven otherwise, 
+    // OR we allow it as "General Link" but for this specific request we need strict visual separation.
+    
+    if ((t1 === EquipmentType.JOINT || t1 === EquipmentType.CHAMBER) && 
+        (t2 === EquipmentType.JOINT || t2 === EquipmentType.CHAMBER)) {
+        
+        // Default to Distribution for safety in Access Networks
+        // Ideally, user *might* need to toggle this if they are building a long transport haul joint-to-joint.
+        // But per "Immutable/Automatic" request, we default to Distribution.
+        return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
     }
 
-    return { valid: false, reason: `Invalid topology: Cannot connect ${t1} to ${t2} directly.` };
+    // Default Fallback
+    return { valid: true, suggestedCategory: CableCategory.DISTRIBUTION };
   },
 
   /**

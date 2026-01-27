@@ -2,28 +2,34 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PCO, ClientProfile, ClientStatus, PCOPort, ClientType, CommercialOffer } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
-import { X, User, Wifi, Activity, AlertCircle, Save, Trash2, Power, Router, Phone, Mail, Loader2, Edit2, RefreshCcw } from 'lucide-react';
+import { X, User, Wifi, Activity, AlertCircle, Save, Trash2, Power, Router, Phone, Mail, Loader2, Edit2, RefreshCcw, Navigation, Network, Lock, ArrowUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface PcoDetailPanelProps {
   pco: PCO;
   onClose: () => void;
   defaultSelectedClientId?: string | null;
+  onNavigate?: () => void;
 }
 
-const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, defaultSelectedClientId }) => {
+const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, defaultSelectedClientId, onNavigate }) => {
   const { t } = useTranslation();
-  const { pcos, addClientToPco, updateClientInPco, removeClientFromPco, updateEquipment } = useNetwork();
+  const { pcos, splitters, addClientToPco, updateClientInPco, removeClientFromPco, updateEquipment } = useNetwork();
   
   const pco = useMemo(() => {
       return pcos.find(p => p.id === propPco.id) || propPco;
   }, [pcos, propPco]);
+
+  const parentSplitter = useMemo(() => {
+      return splitters.find(s => s.id === pco.splitterId);
+  }, [splitters, pco]);
 
   const [selectedPortId, setSelectedPortId] = useState<number | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  // Client Form State
   const [login, setLogin] = useState('');
   const [clientName, setClientName] = useState('');
   const [ontSerial, setOntSerial] = useState('');
@@ -49,18 +55,8 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, 
       return dbPorts;
   }, [pco]);
 
-  const needsResync = (pco.ports?.length || 0) < (pco.totalPorts || 8);
-
-  const handleResync = async () => {
-      const newPorts = [...ports];
-      await updateEquipment(pco.id, { 
-          metadata: { 
-              ...pco.metadata, 
-              ports: newPorts,
-              totalPorts: newPorts.length
-          }
-      });
-  };
+  // Derived: Start Port on Splitter
+  const uplinkStart = (pco as any).metadata?.uplinkPort;
 
   useEffect(() => {
       if (defaultSelectedClientId) {
@@ -117,6 +113,13 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, 
     if (selectedPortId === null) return;
     setIsSaving(true);
     setFormError(null);
+
+    // Validation: Login Uniqueness handled by Backend, but we can do basic checks here
+    if (!login || !clientName) {
+        setFormError("Login and Name are required.");
+        setIsSaving(false);
+        return;
+    }
 
     const clientData: Partial<ClientProfile> = {
       login,
@@ -176,20 +179,15 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, 
 
   const renderPort = (port: PCOPort) => {
     const isSelected = selectedPortId === port.id;
+    // Calculate Upstream Splitter Port
+    const upstreamPort = uplinkStart ? (uplinkStart + port.id - 1) : '?';
+
     let bgClass = 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700';
     let icon = <Power size={14} className="text-slate-400 dark:text-slate-600" />;
     
     if (port.status === 'USED' && port.client) {
-        if (port.client.status === ClientStatus.ACTIVE) {
-            bgClass = 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-500/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50';
-            icon = <Wifi size={14} className="text-emerald-600 dark:text-emerald-400" />;
-        } else if (port.client.status === ClientStatus.SUSPENDED) {
-            bgClass = 'bg-rose-50 dark:bg-rose-900/30 border-rose-300 dark:border-rose-500/50 hover:bg-rose-100 dark:hover:bg-rose-900/50';
-            icon = <AlertCircle size={14} className="text-rose-600 dark:text-rose-400" />;
-        } else {
-            bgClass = 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-500/50 hover:bg-amber-100 dark:hover:bg-amber-900/50';
-            icon = <Activity size={14} className="text-amber-600 dark:text-amber-400" />;
-        }
+        bgClass = 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-500/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50';
+        icon = <Wifi size={14} className="text-emerald-600 dark:text-emerald-400" />;
     } else if (port.status === 'DAMAGED') {
         bgClass = 'bg-slate-200 dark:bg-slate-900 border-slate-300 dark:border-slate-800 opacity-50 cursor-not-allowed';
         icon = <X size={14} className="text-slate-500 dark:text-slate-600" />;
@@ -200,25 +198,30 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, 
         key={port.id}
         onClick={() => port.status !== 'DAMAGED' && handlePortClick(port)}
         className={`
-            relative p-2 rounded-lg border transition-all cursor-pointer flex flex-col items-center justify-between h-20 group
+            relative p-2 rounded-lg border transition-all cursor-pointer flex flex-col items-center justify-between h-20 sm:h-24 group
             ${bgClass} ${isSelected ? 'ring-2 ring-iam-red dark:ring-cyan-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 z-10' : ''}
         `}
       >
         <div className="w-full flex justify-between items-center text-[10px] text-slate-500 font-mono font-bold">
-            <span>#{port.id}</span>
+            <span>FO #{port.id}</span>
             {icon}
         </div>
         
         {port.client ? (
             <div className="text-center w-full">
-                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate w-full">{port.client.login.split('@')[0]}</div>
-                <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate w-full">{port.client.ontSerial}</div>
+                <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate w-full">{port.client.login}</div>
+                <div className="text-[9px] text-slate-500 dark:text-slate-400 truncate w-full hidden sm:block">{port.client.name}</div>
             </div>
         ) : (
             <div className="text-center text-xs text-slate-400 dark:text-slate-600 font-medium">
                 {t('details_panel.free')}
             </div>
         )}
+
+        {/* Upstream Info */}
+        <div className="w-full border-t border-slate-200 dark:border-slate-700 mt-1 pt-1 flex items-center justify-center gap-1 text-[9px] text-purple-600 dark:text-purple-400 font-bold bg-white/50 dark:bg-black/20 rounded-b">
+            <ArrowUp size={8} /> SPL #{upstreamPort}
+        </div>
       </div>
     );
   };
@@ -226,8 +229,8 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, 
   const activePort = selectedPortId ? ports.find(p => p.id === selectedPortId) : null;
 
   return (
-    <div className="absolute top-4 right-4 z-[500] w-[400px] animate-in slide-in-from-right-4 duration-300 flex flex-col h-[calc(100%-2rem)]">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
+    <div className="absolute z-[500] flex flex-col w-full md:w-[400px] h-[70vh] md:h-auto md:max-h-[calc(100%-2rem)] bottom-0 md:bottom-auto md:top-4 md:right-4 animate-in slide-in-from-bottom-10 md:slide-in-from-right-4 duration-300">
+      <div className="bg-white dark:bg-slate-950 rounded-t-2xl md:rounded-2xl border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
         
         {/* Header */}
         <div className="p-4 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
@@ -238,45 +241,54 @@ const PcoDetailPanel: React.FC<PcoDetailPanelProps> = ({ pco: propPco, onClose, 
                 <div>
                     <h3 className="text-slate-900 dark:text-white font-bold text-sm leading-tight">{t('details_panel.pco_manage')}</h3>
                     <div className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-2">
-                        {pco.name}
-                        {needsResync && (
-                            <button onClick={handleResync} className="text-amber-500 hover:text-amber-600" title="Resync Capacity">
-                                <RefreshCcw size={12} />
-                            </button>
-                        )}
+                        {pco.name} ({pco.totalPorts} FO)
                     </div>
                 </div>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
-                <X size={20} />
-            </button>
+            <div className="flex items-center gap-1">
+                {onNavigate && (
+                    <button 
+                        onClick={onNavigate}
+                        className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+                        title={t('navigation.route_btn')}
+                    >
+                        <Navigation size={16} /> <span className="hidden sm:inline">{t('navigation.route_btn')}</span>
+                    </button>
+                )}
+                <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors p-1">
+                    <X size={20} />
+                </button>
+            </div>
         </div>
 
-        {/* Occupancy Bar */}
-        <div className="px-4 py-3 bg-white dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800">
-             <div className="flex justify-between items-center mb-1 text-xs">
-                 <span className="font-bold text-slate-500">{t('details_panel.occupancy')}</span>
-                 <span className={`font-bold ${pco.usedPorts >= ports.length ? 'text-rose-500' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {pco.usedPorts} / {ports.length}
-                 </span>
-             </div>
-             <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                 <div 
-                    className={`h-full transition-all duration-500 ${pco.usedPorts / ports.length >= 0.8 ? 'bg-rose-500' : 'bg-emerald-500'}`} 
-                    style={{width: `${ports.length > 0 ? (pco.usedPorts / ports.length) * 100 : 0}%`}}
-                 ></div>
-             </div>
+        {/* Parent Connection Info */}
+        <div className="px-4 py-2 bg-purple-50/30 dark:bg-purple-900/10 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-slate-500">
+                    <Network size={14} className="text-purple-500" />
+                    <span className="font-bold uppercase hidden sm:inline">Uplink:</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-mono font-bold truncate max-w-[150px]">
+                        {parentSplitter ? parentSplitter.name : 'Disconnected'}
+                    </span>
+                </div>
+                {uplinkStart && (
+                    <div className="flex items-center gap-1 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-mono">
+                        <Lock size={10} />
+                        SPL Ports {uplinkStart}-{uplinkStart + pco.totalPorts - 1}
+                    </div>
+                )}
+            </div>
         </div>
 
         {/* Visual Port Grid */}
-        <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 shrink-0">
+        <div className="p-4 bg-slate-50/50 dark:bg-slate-900/30 shrink-0 border-b border-slate-100 dark:border-slate-800">
             <div className="grid grid-cols-4 gap-2">
                 {ports.map(port => renderPort(port))}
             </div>
         </div>
 
         {/* Action Area */}
-        <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-slate-950 custom-scrollbar">
             {activePort ? (
                 <>
                    {activePort.client && !isFormOpen ? (

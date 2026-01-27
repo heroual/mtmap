@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { X, Network, Plus, ChevronUp, ChevronDown, ArrowUp, ArrowDown, MapPin, Server, CircuitBoard, Cpu, ChevronRight } from 'lucide-react';
+import { X, Network, Plus, ChevronUp, ChevronDown, ArrowUp, ArrowDown, MapPin, Server, CircuitBoard, Cpu, ChevronRight, Navigation } from 'lucide-react';
 import { NetworkEntity, EquipmentType, Equipment } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useTranslation } from 'react-i18next';
@@ -11,9 +11,10 @@ interface EquipmentDetailPanelProps {
   onClose: () => void;
   onAddChild: (parent: NetworkEntity) => void;
   onSelectEntity: (entity: NetworkEntity) => void;
+  onNavigate?: () => void;
 }
 
-const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onClose, onAddChild, onSelectEntity }) => {
+const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onClose, onAddChild, onSelectEntity, onNavigate }) => {
   const { t } = useTranslation();
   const { equipments } = useNetwork();
 
@@ -49,8 +50,8 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
   }, [entity, equipments, isChassis]);
 
   return (
-    <div className="absolute top-4 right-4 z-[500] w-[350px] animate-in slide-in-from-right-4 duration-300 flex flex-col max-h-[calc(100%-2rem)]">
-      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
+    <div className="absolute z-[500] flex flex-col w-full md:w-[350px] h-[60vh] md:h-auto md:max-h-[calc(100%-2rem)] bottom-0 md:bottom-auto md:top-4 md:right-4 animate-in slide-in-from-bottom-10 md:slide-in-from-right-4 duration-300">
+      <div className="bg-white dark:bg-slate-950 rounded-t-2xl md:rounded-2xl border-t md:border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col h-full">
         
         {/* Header */}
         <div className="p-4 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
@@ -63,9 +64,20 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
                     <div className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-[150px]">{entity.name}</div>
                 </div>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
-                <X size={20} />
-            </button>
+            <div className="flex items-center gap-1">
+                {onNavigate && (
+                    <button 
+                        onClick={onNavigate}
+                        className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+                        title={t('navigation.route_btn')}
+                    >
+                        <Navigation size={16} /> <span className="hidden sm:inline">{t('navigation.route_btn')}</span>
+                    </button>
+                )}
+                <button onClick={onClose} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors p-1">
+                    <X size={20} />
+                </button>
+            </div>
         </div>
 
         <div className="overflow-y-auto custom-scrollbar p-4 space-y-4 flex-1">

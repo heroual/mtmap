@@ -225,6 +225,7 @@ export const en = {
     distance: "Distance",
     from_location: "From your location",
     go_now: "GO NOW",
+    route_btn: "Route",
     calculating: "Calculating optimal route...",
     cancel_route: "Cancel Route",
     driving: "Driving Mode",
