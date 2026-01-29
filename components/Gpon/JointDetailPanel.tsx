@@ -4,30 +4,13 @@ import { FiberCable, Equipment } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { X, Link, Trash2, ArrowRight, ArrowLeftRight, Cable, Lock, Navigation, ArrowDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { FiberStandards } from '../../lib/fiber-standards';
 
 interface JointDetailPanelProps {
   joint: Equipment;
   onClose: () => void;
   onNavigate?: () => void;
 }
-
-// Standard Fiber Color Code (1-12) TIA-598-C
-const FIBER_COLORS = [
-  '#0099FF', // 1. Blue
-  '#FF9900', // 2. Orange
-  '#00CC00', // 3. Green
-  '#996633', // 4. Brown
-  '#A0A0A0', // 5. Grey
-  '#FFFFFF', // 6. White
-  '#FF0000', // 7. Red
-  '#000000', // 8. Black
-  '#FFFF00', // 9. Yellow
-  '#9933FF', // 10. Violet
-  '#FF99CC', // 11. Pink
-  '#00FFFF'  // 12. Aqua
-];
-
-const getFiberColor = (index: number) => FIBER_COLORS[(index - 1) % 12];
 
 const JointDetailPanel: React.FC<JointDetailPanelProps> = ({ joint: propJoint, onClose, onNavigate }) => {
   const { t } = useTranslation();
@@ -96,7 +79,7 @@ const JointDetailPanel: React.FC<JointDetailPanelProps> = ({ joint: propJoint, o
                           <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2 truncate max-w-[150px]">
                               <Cable size={12} /> {cable.name}
                           </span>
-                          <span className="text-[9px] font-mono text-slate-500">{cable.fiberCount}FO</span>
+                          <span className="text-[9px] font-mono text-slate-500">{cable.cableType} • {cable.fiberCount}FO</span>
                       </div>
                       <div className="p-2 grid grid-cols-6 md:grid-cols-4 gap-1">
                           {Array.from({ length: cable.fiberCount }).map((_, i) => {
@@ -106,7 +89,8 @@ const JointDetailPanel: React.FC<JointDetailPanelProps> = ({ joint: propJoint, o
                                   ? selectedIn?.cableId === cable.id && selectedIn?.fiberIdx === fiberIdx
                                   : selectedOut?.cableId === cable.id && selectedOut?.fiberIdx === fiberIdx;
                               
-                              const color = getFiberColor(fiberIdx);
+                              const struct = FiberStandards.getStructure(cable.cableType, fiberIdx);
+                              const colorDef = struct.fiberColor;
 
                               return (
                                   <button
@@ -122,12 +106,16 @@ const JointDetailPanel: React.FC<JointDetailPanelProps> = ({ joint: propJoint, o
                                                   : 'hover:scale-105 bg-white dark:bg-slate-800 hover:border-slate-300 border-slate-200 dark:border-slate-700'}
                                       `}
                                       style={{ borderColor: isSelected ? '#10b981' : undefined }}
+                                      title={`Tube: ${struct.tubeColor.name}, Fiber: ${struct.fiberColor.name}`}
                                   >
-                                      <div className="flex items-center h-full">
-                                          <div className="w-1.5 h-4 rounded-sm mr-1" style={{ backgroundColor: color }}></div>
+                                      <div className="flex items-center h-full w-full">
+                                          <div 
+                                            className="w-2 h-4 rounded-sm mr-1 border border-black/10" 
+                                            style={{ backgroundColor: colorDef.hex }}
+                                          ></div>
                                           <span className={`${used ? 'text-slate-400' : 'text-slate-600 dark:text-slate-300'}`}>{fiberIdx}</span>
                                       </div>
-                                      {used && <Lock size={8} className="text-slate-400" />}
+                                      {used && <Lock size={8} className="text-slate-400 absolute right-1" />}
                                   </button>
                               );
                           })}
@@ -218,7 +206,7 @@ const JointDetailPanel: React.FC<JointDetailPanelProps> = ({ joint: propJoint, o
         </div>
 
         {/* Splice Table (Footer) */}
-        <div className="h-48 md:h-48 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 flex flex-col shrink-0">
+        <div className="h-48 md:h-48 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0">
             <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                 <span className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-2">
                     <ArrowLeftRight size={12} /> {t('joint.plan')} ({splices.length})
@@ -242,19 +230,23 @@ const JointDetailPanel: React.FC<JointDetailPanelProps> = ({ joint: propJoint, o
                         ) : splices.map((splice, idx) => {
                             const cIn = cables.find(c => c.id === splice.cableIn);
                             const cOut = cables.find(c => c.id === splice.cableOut);
+                            
+                            const colorIn = cIn ? FiberStandards.getStructure(cIn.cableType, splice.fiberIn).fiberColor : null;
+                            const colorOut = cOut ? FiberStandards.getStructure(cOut.cableType, splice.fiberOut).fiberColor : null;
+
                             return (
                                 <tr key={idx} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                                     <td className="px-4 py-2 font-medium text-slate-700 dark:text-slate-300 truncate max-w-[80px] sm:max-w-[120px]">{cIn?.name || splice.cableIn}</td>
                                     <td className="px-2 py-2">
-                                        <div className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded py-0.5">
-                                            <div className="w-2 h-2 rounded-full" style={{backgroundColor: getFiberColor(splice.fiberIn)}}></div>
+                                        <div className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded py-0.5" title={colorIn?.name}>
+                                            <div className="w-2 h-2 rounded-full border border-black/10" style={{backgroundColor: colorIn?.hex || '#ccc'}}></div>
                                             <span className="font-mono font-bold">{splice.fiberIn}</span>
                                         </div>
                                     </td>
                                     <td className="px-2 py-2 text-center text-slate-300"><Link size={12} /></td>
                                     <td className="px-2 py-2">
-                                        <div className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded py-0.5">
-                                            <div className="w-2 h-2 rounded-full" style={{backgroundColor: getFiberColor(splice.fiberOut)}}></div>
+                                        <div className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded py-0.5" title={colorOut?.name}>
+                                            <div className="w-2 h-2 rounded-full border border-black/10" style={{backgroundColor: colorOut?.hex || '#ccc'}}></div>
                                             <span className="font-mono font-bold">{splice.fiberOut}</span>
                                         </div>
                                     </td>

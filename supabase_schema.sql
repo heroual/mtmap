@@ -62,14 +62,65 @@ CREATE TABLE IF NOT EXISTS public.operations (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 5. Audit Logs Table (Fix for missing table and column mismatches)
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_email TEXT NOT NULL,
+    action TEXT NOT NULL, 
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    entity_path TEXT,
+    old_data JSONB,
+    new_data JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- MIGRATION: Fix 'entity' column mismatch
+DO $$ 
+BEGIN 
+  -- Rename 'entity' to 'entity_type' if it exists and 'entity_type' does not
+  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity') THEN
+      IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity_type') THEN
+          ALTER TABLE public.audit_logs RENAME COLUMN entity TO entity_type;
+      ELSE
+          -- If both exist, drop the legacy 'entity' column to resolve NOT NULL constraints
+          ALTER TABLE public.audit_logs DROP COLUMN entity;
+      END IF;
+  END IF;
+
+  -- Ensure other columns exist
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity_path') THEN
+      ALTER TABLE public.audit_logs ADD COLUMN entity_path TEXT;
+  END IF;
+  
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='old_data') THEN
+      ALTER TABLE public.audit_logs ADD COLUMN old_data JSONB;
+  END IF;
+
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='new_data') THEN
+      ALTER TABLE public.audit_logs ADD COLUMN new_data JSONB;
+  END IF;
+END $$;
+
 -- Allow public access (Warning: Restrict this in production via RLS)
 ALTER TABLE public.equipments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Simple Policies for Demo (Allow All)
+DROP POLICY IF EXISTS "Allow All Equipments" ON public.equipments;
 CREATE POLICY "Allow All Equipments" ON public.equipments FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow All Cables" ON public.cables;
 CREATE POLICY "Allow All Cables" ON public.cables FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow All Clients" ON public.clients;
 CREATE POLICY "Allow All Clients" ON public.clients FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow All Operations" ON public.operations;
 CREATE POLICY "Allow All Operations" ON public.operations FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow All Audit" ON public.audit_logs;
+CREATE POLICY "Allow All Audit" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);

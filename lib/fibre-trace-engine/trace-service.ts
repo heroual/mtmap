@@ -3,11 +3,7 @@ import { NetworkState, FiberCable, Equipment, EquipmentType, TraceResult, FiberS
 import { calculateDistance } from '../gis';
 import { EquipmentArchitectureFactory } from '../factory/equipment-architecture';
 import { OpticalCalculator, OpticalConstants } from '../optical-calculation';
-
-const FIBER_COLORS = [
-  'Blue', 'Orange', 'Green', 'Brown', 'Grey', 'White', 
-  'Red', 'Black', 'Yellow', 'Violet', 'Pink', 'Aqua'
-];
+import { FiberStandards } from '../fiber-standards';
 
 export const TraceService = {
   /**
@@ -263,7 +259,8 @@ export const TraceService = {
 
 // Helper to create visual segments
 const createCableSegment = (cable: FiberCable, fiberIdx: number): FiberSegment => {
-  const colorIndex = (fiberIdx - 1) % 12;
+  const structure = FiberStandards.getStructure(cable.cableType, fiberIdx);
+  
   return {
     id: `seg-${cable.id}-${fiberIdx}`,
     type: 'CABLE',
@@ -271,8 +268,8 @@ const createCableSegment = (cable: FiberCable, fiberIdx: number): FiberSegment =
     entityId: cable.id,
     entityType: 'CABLE',
     fiberIndex: fiberIdx,
-    fiberColor: FIBER_COLORS[colorIndex],
-    geometry: cable.path, // Important for map visualization
-    meta: `${cable.fiberCount} Fo`
+    fiberColor: structure.fiberColor.name, // Pass name for compatibility or use HEX if updated types
+    geometry: cable.path, 
+    meta: `${cable.fiberCount} Fo (T:${structure.tubeId}/F:${structure.fiberId})`
   };
 };

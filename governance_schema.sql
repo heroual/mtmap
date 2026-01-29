@@ -20,24 +20,49 @@ BEGIN
       ALTER TABLE public.audit_logs RENAME COLUMN action_type TO action;
   END IF;
 
-  -- 2. Ensure 'action' exists if it wasn't renamed
+  -- 2. Handle 'entity' column (Migration to entity_type) - Fix for "null value in column entity"
+  IF EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity') THEN
+      IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity_type') THEN
+          ALTER TABLE public.audit_logs RENAME COLUMN entity TO entity_type;
+      ELSE
+          -- If entity_type already exists, the 'entity' column is likely legacy and causing constraint errors
+          ALTER TABLE public.audit_logs DROP COLUMN entity;
+      END IF;
+  END IF;
+
+  -- 3. Ensure 'action' exists if it wasn't renamed
   IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='action') THEN
       ALTER TABLE public.audit_logs ADD COLUMN action TEXT DEFAULT 'UNKNOWN';
   END IF;
 
-  -- 3. Ensure 'entity_type' exists (Fix for error 42703)
+  -- 4. Ensure 'entity_type' exists (Fix for error 42703)
   IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity_type') THEN
       ALTER TABLE public.audit_logs ADD COLUMN entity_type TEXT DEFAULT 'SYSTEM';
   END IF;
 
-  -- 4. Ensure 'entity_id' exists
+  -- 5. Ensure 'entity_id' exists
   IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity_id') THEN
       ALTER TABLE public.audit_logs ADD COLUMN entity_id TEXT DEFAULT '000';
   END IF;
   
-  -- 5. Ensure 'user_email' exists
+  -- 6. Ensure 'user_email' exists
   IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='user_email') THEN
       ALTER TABLE public.audit_logs ADD COLUMN user_email TEXT DEFAULT 'admin@mtmap.ma';
+  END IF;
+
+  -- 7. Ensure 'entity_path' exists (Fix for missing column error)
+  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='entity_path') THEN
+      ALTER TABLE public.audit_logs ADD COLUMN entity_path TEXT;
+  END IF;
+
+  -- 8. Ensure 'old_data' exists
+  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='old_data') THEN
+      ALTER TABLE public.audit_logs ADD COLUMN old_data JSONB;
+  END IF;
+
+  -- 9. Ensure 'new_data' exists
+  IF NOT EXISTS(SELECT * FROM information_schema.columns WHERE table_name='audit_logs' AND column_name='new_data') THEN
+      ALTER TABLE public.audit_logs ADD COLUMN new_data JSONB;
   END IF;
 END $$;
 

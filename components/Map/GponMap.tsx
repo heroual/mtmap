@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { PCO, OLT, Splitter, GponPort, Coordinates, EquipmentType, EquipmentStatus, PhysicalEntity, RouteDetails, MsanType, MSAN } from '../../types';
+import { PCO, OLT, Splitter, GponPort, Coordinates, EquipmentType, EquipmentStatus, PhysicalEntity, RouteDetails, MsanType, MSAN, FiberCable } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import L from 'leaflet';
 import MapTools from './tools/MapTools';
@@ -23,8 +23,8 @@ interface GponMapProps {
   center: Coordinates;
   onMapClick?: (coords: Coordinates) => void;
   onAddEquipment?: (coords: Coordinates) => void;
-  onEquipmentSelect?: (entity: PhysicalEntity) => void;
-  selectedEntity?: PhysicalEntity | null;
+  onEquipmentSelect?: (entity: PhysicalEntity | FiberCable) => void;
+  selectedEntity?: PhysicalEntity | FiberCable | null;
   route?: RouteDetails | null;
   highlightLocation?: Coordinates | null;
   userLocation?: { location: Coordinates; accuracy: number | null } | null;
@@ -243,6 +243,7 @@ const GponMap: React.FC<GponMapProps> = ({
                 cables={cables} 
                 entities={[...sites, ...joints, ...pcos, ...msansToRender.filter(m => m.location) as unknown as PhysicalEntity[]]} 
                 visible={showCables}
+                onCableClick={onEquipmentSelect ? (cable) => onEquipmentSelect(cable) : undefined}
            />
            
            <TraceLayer map={map} />
