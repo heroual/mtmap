@@ -17,6 +17,23 @@ export enum EquipmentType {
   CABLE = 'CABLE'
 }
 
+export enum BoardType {
+  GPON = 'GPON',
+  XGSPON = 'XGSPON',
+  UPLINK = 'UPLINK',
+  POWER = 'POWER',
+  CONTROL = 'CONTROL',
+  EMPTY = 'EMPTY'
+}
+
+export interface SlotConfig {
+  slotNumber: number;
+  status: 'EMPTY' | 'OCCUPIED' | 'RESERVED';
+  boardType?: BoardType;
+  portCount?: number;
+  ports?: Record<string, { status: 'FREE' | 'USED' | 'DAMAGED', cableId?: string }>;
+}
+
 export enum EquipmentStatus {
   PLANNED = 'PLANNED',
   INSTALLING = 'INSTALLING',
@@ -131,6 +148,7 @@ export interface Equipment extends NetworkEntity {
   usedCapacity?: number;
   model?: string;
   serial?: string;
+  vendor?: string;
   slotNumber?: number;
   boardNumber?: number;
   portNumber?: number;

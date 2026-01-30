@@ -53,14 +53,15 @@ export const NetworkService = {
       // Process Equipments
       const rawEquipments = eqs.map((e: any) => {
           const entity: any = {
-              ...e.metadata,
+              ...e.metadata, // Spread metadata for top-level access if legacy components need it
               id: e.id,
               name: e.name,
               type: e.type as EquipmentType,
               parentId: e.parent_id,
               location: parsePoint(e.location) || { lat: 0, lng: 0 },
               status: e.status,
-              updatedAt: e.updated_at
+              updatedAt: e.updated_at,
+              metadata: e.metadata || {} // CRITICAL: Explicitly populate metadata field
           };
 
           // Hydrate PCO Ports
@@ -115,6 +116,7 @@ export const NetworkService = {
         cableType: c.metadata?.cableType || 'FO48', 
         path: parseLineString(c.path_geometry), 
         status: c.status,
+        metadata: c.metadata || {} // CRITICAL: Explicitly populate metadata for cables
       }));
 
       return { equipments: equipmentsWithPaths, cables };
@@ -126,12 +128,18 @@ export const NetworkService = {
 
   async createEquipment(eq: Equipment) {
     if (!supabase) return;
-    const { id, name, type, parentId, location, status, logicalPath, ...meta } = eq as any;
+    const { id, name, type, parentId, location, status, logicalPath, metadata } = eq as any;
+    // Ensure we don't duplicate keys if metadata was spread
+    const cleanMetadata = { ...metadata };
+    delete cleanMetadata.id;
+    delete cleanMetadata.name;
+    // ...
+
     const payload = {
         id, name, type, parent_id: parentId,
         location: toPoint(location),
         status,
-        metadata: { ...meta, logicalPath }
+        metadata: { ...cleanMetadata, logicalPath }
     };
     
     // DB Insert
@@ -191,7 +199,7 @@ export const NetworkService = {
 
   async createCable(cable: FiberCable) {
     if (!supabase) return;
-    const { id, name, type, category, startNodeId, endNodeId, fiberCount, lengthMeters, status, path, cableType } = cable;
+    const { id, name, type, category, startNodeId, endNodeId, fiberCount, lengthMeters, status, path, cableType, metadata } = cable;
     
     const physicalStartId = extractUuid(startNodeId);
     const physicalEndId = extractUuid(endNodeId);
@@ -205,6 +213,7 @@ export const NetworkService = {
         path_geometry: toLineString(path),
         length_meters: lengthMeters || 0,
         metadata: {
+            ...metadata,
             originalStartId: startNodeId,
             originalEndId: endNodeId,
             cableType: cableType

@@ -2,15 +2,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Cable, Save, X, ArrowRight, AlertTriangle, CheckCircle2, Route, Settings2, Loader2, PenTool, MousePointer2, Server, ChevronRight, CircuitBoard, Network, Zap, Activity, Link as LinkIcon, Spline, Lock } from 'lucide-react';
 import { useNetwork } from '../../context/NetworkContext';
-import { EquipmentType, CableType, CableCategory, PhysicalEntity, EquipmentStatus, Coordinates, InstallationMode, Equipment } from '../../types';
+import { EquipmentType, CableType, CableCategory, PhysicalEntity, EquipmentStatus, Coordinates, InstallationMode, Equipment, SlotConfig } from '../../types';
 import { CablingRules } from '../../lib/cabling-rules';
 import { getRoute } from '../../lib/gis/routing';
 import { useTranslation } from 'react-i18next';
 import { OpticalCalculator } from '../../lib/optical-calculation';
 import { EquipmentArchitectureFactory } from '../../lib/factory/equipment-architecture';
 
-// ... (HierarchySelector Component Code remains same, omitting for brevity to focus on Logic change below) ... 
-// Re-implementing HierarchySelector inside for completeness
 interface HierarchySelectorProps {
     label: string;
     equipments: PhysicalEntity[];
@@ -21,54 +19,65 @@ interface HierarchySelectorProps {
 
 const HierarchySelector: React.FC<HierarchySelectorProps> = ({ label, equipments, selectedId, onChange, excludeId }) => {
     const [selectedEquipId, setSelectedEquipId] = useState<string>('');
-    const [selectedSlotId, setSelectedSlotId] = useState<string>('');
-    const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+    const [selectedSlotNum, setSelectedSlotNum] = useState<string>('');
     
+    // Find the main equipment object
     const mainEquipment = equipments.find(e => e.id === selectedEquipId);
-    const connectionsMap = mainEquipment?.metadata?.connections || {};
-
-    const slots = useMemo(() => {
-        if (!mainEquipment || !mainEquipment.type.match(/OLT|MSAN/)) return [];
-        return EquipmentArchitectureFactory.getChildren(mainEquipment as Equipment);
+    
+    // Parse metadata for active slots if OLT/MSAN
+    const activeSlots = useMemo(() => {
+        if (!mainEquipment || !mainEquipment.metadata?.slots) return [];
+        const slotsMap = mainEquipment.metadata.slots as Record<string, SlotConfig>;
+        return Object.values(slotsMap).filter(s => s.status === 'OCCUPIED' && s.boardType !== 'CONTROL');
     }, [mainEquipment]);
 
-    const boards = useMemo(() => {
-        const slot = slots.find(s => s.id === selectedSlotId);
-        if (!slot) return [];
-        return EquipmentArchitectureFactory.getChildren(slot);
-    }, [selectedSlotId, slots]);
-
+    // Parse ports for selected slot
     const ports = useMemo(() => {
-        const board = boards.find(b => b.id === selectedBoardId);
-        if (!board) return [];
-        return EquipmentArchitectureFactory.getChildren(board);
-    }, [selectedBoardId, boards]);
+        if (!selectedSlotNum || !mainEquipment?.metadata?.slots) return [];
+        const slotConfig = mainEquipment.metadata.slots[selectedSlotNum] as SlotConfig;
+        if (!slotConfig || !slotConfig.portCount) return [];
 
+        const portsList = [];
+        for (let i = 0; i < slotConfig.portCount; i++) {
+            const portId = `${mainEquipment.id}::S::${selectedSlotNum}::B::1::P::${i}`; // Virtual ID
+            const isUsed = slotConfig.ports?.[i]?.status === 'USED';
+            portsList.push({
+                index: i,
+                virtualId: portId,
+                status: isUsed ? 'USED' : 'FREE'
+            });
+        }
+        return portsList;
+    }, [selectedSlotNum, mainEquipment]);
+
+    // Reset downstream selection when upstream changes
     useEffect(() => {
-        if (selectedEquipId) {
-            const eq = equipments.find(e => e.id === selectedEquipId);
-            if (eq && (eq.type.includes('OLT') || eq.type === EquipmentType.MSAN)) {
-                setSelectedSlotId('');
-                setSelectedBoardId('');
-                onChange('', null); 
+        if (!selectedEquipId) {
+            setSelectedSlotNum('');
+            onChange('', null);
+        } else {
+            // If it's not an OLT/MSAN, select it directly
+            if (mainEquipment && !mainEquipment.type.includes('OLT') && mainEquipment.type !== EquipmentType.MSAN) {
+                onChange(selectedEquipId, mainEquipment);
             } else {
-                onChange(selectedEquipId, eq || null);
+                // If it is OLT, wait for port selection
+                onChange('', null); 
             }
         }
     }, [selectedEquipId]);
 
-    useEffect(() => {
-        if (ports.length > 0 && !selectedId) {
-            const firstFree = ports.find(p => !connectionsMap[p.id]);
-            if (firstFree) handlePortSelect(firstFree.id);
-        }
-    }, [ports]);
-
-    const handlePortSelect = (portId: string) => {
-        const port = ports.find(p => p.id === portId);
-        if (port && mainEquipment) {
-            const virtualEntity: any = { ...port, location: mainEquipment.location };
-            onChange(portId, virtualEntity);
+    const handlePortSelect = (virtualId: string, index: number) => {
+        if (mainEquipment) {
+            // Construct a virtual entity to pass back
+            const virtualEntity: any = {
+                id: virtualId,
+                name: `${mainEquipment.name} (S${selectedSlotNum}/P${index})`,
+                type: EquipmentType.GPON_PORT,
+                location: mainEquipment.location,
+                parentId: mainEquipment.id,
+                metadata: { slot: selectedSlotNum, port: index }
+            };
+            onChange(virtualId, virtualEntity);
         }
     };
 
@@ -87,38 +96,46 @@ const HierarchySelector: React.FC<HierarchySelectorProps> = ({ label, equipments
                     ))}
                 </select>
             </div>
-            {/* Logic for slots/boards/ports rendering... */}
-            {slots.length > 0 && (
-                <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-700">
+
+            {/* SLOT SELECTION (For OLTs) */}
+            {activeSlots.length > 0 && (
+                <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-700 animate-in slide-in-from-left-2">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Select Card (Slot)</label>
                     <select 
-                        value={selectedSlotId} 
-                        onChange={e => { setSelectedSlotId(e.target.value); setSelectedBoardId(''); }}
+                        value={selectedSlotNum} 
+                        onChange={e => setSelectedSlotNum(e.target.value)}
                         className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none"
                     >
-                        <option value="">Select Slot...</option>
-                        {slots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        <option value="">-- Choose Card --</option>
+                        {activeSlots.map(s => (
+                            <option key={s.slotNumber} value={s.slotNumber}>Slot {s.slotNumber} - {s.boardType} ({s.portCount} Ports)</option>
+                        ))}
                     </select>
                 </div>
             )}
-            {boards.length > 0 && (
-                <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-700">
-                    <select 
-                        value={selectedBoardId} 
-                        onChange={e => setSelectedBoardId(e.target.value)}
-                        className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs outline-none"
-                    >
-                        <option value="">Select Board...</option>
-                        {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                </div>
-            )}
+
+            {/* PORT SELECTION */}
             {ports.length > 0 && (
-                <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-700 grid grid-cols-4 gap-1">
-                    {ports.map(p => (
-                        <button key={p.id} type="button" onClick={() => handlePortSelect(p.id)} className={`text-[10px] py-1 rounded border ${selectedId === p.id ? 'bg-iam-red text-white' : 'bg-white border-slate-200'}`}>
-                            {p.portNumber}
-                        </button>
-                    ))}
+                <div className="pl-3 border-l-2 border-slate-200 dark:border-slate-700 animate-in slide-in-from-left-2">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Select Free Port</label>
+                    <div className="grid grid-cols-4 gap-1 max-h-24 overflow-y-auto custom-scrollbar">
+                        {ports.map(p => (
+                            <button 
+                                key={p.index} 
+                                type="button" 
+                                disabled={p.status === 'USED'}
+                                onClick={() => handlePortSelect(p.virtualId, p.index)} 
+                                className={`
+                                    text-[10px] py-1 rounded border transition-colors
+                                    ${selectedId === p.virtualId ? 'bg-iam-red text-white border-iam-red' : 
+                                      p.status === 'USED' ? 'bg-slate-100 text-slate-300 border-transparent cursor-not-allowed' : 
+                                      'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400'}
+                                `}
+                            >
+                                P{p.index}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>
@@ -134,14 +151,16 @@ interface AddCableModalProps {
 
 const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, manualDrawingData, draftState }) => {
   const { t } = useTranslation();
-  const { sites, joints, pcos, msans, splitters, addCable, updateEquipment, equipments } = useNetwork();
+  const { sites, joints, pcos, msans, splitters, olts, equipments, addCable, updateEquipment } = useNetwork();
   
+  // Combine all connectable endpoints
   const [endpoints, setEndpoints] = useState<PhysicalEntity[]>([]);
 
   useEffect(() => {
     const hasLoc = (e: any) => e && e.location && typeof e.location.lat === 'number';
-    setEndpoints([...sites, ...joints, ...pcos, ...splitters, ...msans].filter(hasLoc) as PhysicalEntity[]);
-  }, [sites, joints, pcos, msans, splitters]);
+    // Include OLTs now
+    setEndpoints([...sites, ...olts, ...joints, ...pcos, ...splitters, ...msans].filter(hasLoc) as PhysicalEntity[]);
+  }, [sites, joints, pcos, msans, splitters, olts]);
 
   const [startId, setStartId] = useState(draftState?.startId || '');
   const [endId, setEndId] = useState(draftState?.endId || '');
@@ -164,7 +183,7 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
       }
   }, [manualDrawingData]);
 
-  // Route Calculation (Simplified for brevity, assuming standard getRoute logic here)
+  // Route Calculation
   useEffect(() => {
       if (mode === 'MANUAL' || !startEntity || !endEntity) return;
       const calc = async () => {
@@ -190,41 +209,137 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
 
     const cableId = crypto.randomUUID();
     const fiberCount = CablingRules.getFiberCount(cableType);
-    const cableFibers: Record<number, any> = {};
+    
+    const fiberMeta: Record<string, any> = {};
+    const startNodeUpdates: Record<string, any> = {};
+    const endNodeUpdates: Record<string, any> = {};
+    let shouldUpdateStartNode = false;
+    let shouldUpdateEndNode = false;
 
-    // --- ENHANCED MAPPING LOGIC ---
-    // If destination is PCO, we map ALL fibers 1:1 to PCO Ports by default
-    const isPcoDest = endEntity?.type === EquipmentType.PCO;
-    const capacity = isPcoDest ? (endEntity as any).totalPorts || 8 : 0;
+    // --- AUTO MAPPING LOGIC (SPLITTER -> PCO) ---
+    // If we connect a Splitter to a PCO, map ports 1:1
+    if (startEntity && startEntity.type === EquipmentType.SPLITTER && endEntity && endEntity.type === EquipmentType.PCO) {
+        
+        const splitterRatio = (startEntity as any).ratio || (startEntity as any).metadata?.ratio || '1:32';
+        const splitterCapacity = parseInt(splitterRatio.split(':')[1]) || 32;
+        const currentSplitterConns = startEntity.metadata?.connections || {};
+        
+        // Target: Find ports on Splitter
+        const pcoTotalPorts = (endEntity as any).metadata?.totalPorts || 8;
+        const mapCount = Math.min(fiberCount, pcoTotalPorts); 
+        
+        let foundPorts: number[] = [];
 
-    for (let i = 1; i <= fiberCount; i++) {
-        let fiberStatus = 'FREE';
-        let downstreamPort = undefined;
-        let downstreamId = endId;
-
-        // Auto-Map for PCO
-        if (isPcoDest && i <= capacity) {
-            fiberStatus = 'USED';
-            downstreamPort = i.toString(); // Fiber 1 -> Port 1
+        // 1. Try finding contiguous block
+        for (let i = 1; i <= splitterCapacity - mapCount + 1; i++) {
+            let isBlockFree = true;
+            for (let j = 0; j < mapCount; j++) {
+                if (currentSplitterConns[`P${i+j}`]) {
+                    isBlockFree = false;
+                    break;
+                }
+            }
+            if (isBlockFree) {
+                for(let j=0; j<mapCount; j++) foundPorts.push(i+j);
+                break;
+            }
         }
-        // Auto-Map for Transport (Splitter Input)
-        else if (endEntity?.type === EquipmentType.SPLITTER && i === 1) {
-            // Usually Fiber 1 is the uplink for splitter
-            fiberStatus = 'USED';
-            downstreamPort = 'IN'; 
+
+        // 2. Fallback: Find ANY free ports if block not found
+        if (foundPorts.length === 0) {
+            for (let i = 1; i <= splitterCapacity; i++) {
+                if (!currentSplitterConns[`P${i}`]) {
+                    foundPorts.push(i);
+                    if (foundPorts.length === mapCount) break;
+                }
+            }
         }
 
-        // Only save metadata if used or mapped, to save DB space
-        if (fiberStatus === 'USED') {
-            cableFibers[i] = {
-                status: fiberStatus,
-                upstreamId: startId,
+        // 3. Map what we found (could be less than mapCount if splitter full)
+        if (foundPorts.length > 0) {
+            shouldUpdateStartNode = true;
+            shouldUpdateEndNode = true;
+
+            foundPorts.forEach((splPort, index) => {
+                const fiberIdx = index + 1; // Fiber 1 maps to first found port
+                const pcoPort = index + 1;  // PCO Port 1, 2, ...
+
+                // 1. Cable Metadata
+                fiberMeta[fiberIdx] = {
+                    status: 'USED',
+                    downstreamId: endId,
+                    downstreamPort: pcoPort
+                };
+
+                // 2. Splitter Metadata (Start Node)
+                startNodeUpdates[`P${splPort}`] = {
+                    status: 'USED',
+                    cableId: cableId,
+                    fiberIndex: fiberIdx,
+                    connectedTo: endEntity.name, 
+                    connectedToId: endEntity.id,
+                    pcoFiberIndex: pcoPort,
+                    updatedAt: new Date().toISOString()
+                };
+
+                // 3. PCO Metadata (End Node)
+                endNodeUpdates[`P${pcoPort}`] = {
+                    status: 'USED',
+                    cableId: cableId,
+                    fiberIndex: fiberIdx,
+                    connectedTo: startEntity.name,
+                    updatedAt: new Date().toISOString()
+                };
+            });
+        }
+    } 
+    // --- GENERIC MAPPING (Any to PCO) ---
+    else if (endEntity && endEntity.type === EquipmentType.PCO) {
+        // If simply connecting something to PCO, auto-map cable fibers to PCO ports
+        const pcoCapacity = (endEntity as any).metadata?.totalPorts || 8;
+        const mapCount = Math.min(fiberCount, pcoCapacity);
+        
+        for (let k = 0; k < mapCount; k++) {
+            const fiberIdx = k + 1;
+            const pcoPort = k + 1;
+            
+            // Cable Meta
+            fiberMeta[fiberIdx] = {
+                status: 'USED',
                 downstreamId: endId,
-                downstreamPort: downstreamPort // This is the key DB field user asked for
+                downstreamPort: pcoPort
             };
+            
+            // PCO Meta
+            endNodeUpdates[`P${pcoPort}`] = {
+                status: 'USED',
+                cableId: cableId,
+                fiberIndex: fiberIdx,
+                connectedTo: startEntity?.name || 'Upstream',
+                updatedAt: new Date().toISOString()
+            };
+            shouldUpdateEndNode = true;
         }
     }
 
+    // --- PORT OCCUPANCY UPDATE LOGIC (OLT Source) ---
+    if (startEntity && startEntity.type === EquipmentType.GPON_PORT && startEntity.parentId) {
+        const olt = equipments.find(e => e.id === startEntity.parentId);
+        const meta = startEntity.metadata as any; // contains { slot, port }
+        
+        if (olt && meta) {
+            const newMeta = JSON.parse(JSON.stringify(olt.metadata));
+            const slotConf = newMeta.slots[meta.slot];
+            
+            if (slotConf) {
+                if (!slotConf.ports) slotConf.ports = {};
+                slotConf.ports[meta.port] = { status: 'USED', cableId };
+                await updateEquipment(olt.id, { metadata: newMeta });
+            }
+        }
+    }
+
+    // CREATE CABLE
     await addCable({
         id: cableId,
         name,
@@ -239,9 +354,34 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
         path: routeGeometry,
         installationMode: installMode,
         metadata: {
-            fibers: cableFibers // Save mapping
+            fibers: fiberMeta 
         }
     });
+
+    // UPDATE NODES
+    if (shouldUpdateStartNode && startEntity) {
+        await updateEquipment(startEntity.id, {
+            metadata: {
+                ...startEntity.metadata,
+                connections: {
+                    ...(startEntity.metadata?.connections || {}),
+                    ...startNodeUpdates
+                }
+            }
+        });
+    }
+
+    if (shouldUpdateEndNode && endEntity) {
+        await updateEquipment(endEntity.id, {
+            metadata: {
+                ...endEntity.metadata,
+                connections: {
+                    ...(endEntity.metadata?.connections || {}),
+                    ...endNodeUpdates
+                }
+            }
+        });
+    }
     
     onClose();
   };
@@ -255,13 +395,24 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
         </div>
         <div className="p-6 overflow-y-auto grid grid-cols-2 gap-6">
             <div className="space-y-4">
-                <HierarchySelector label={t('cable.from')} equipments={endpoints} selectedId={startId} onChange={(id, e) => { setStartId(id); setStartEntity(e); }} />
+                <HierarchySelector 
+                    label={t('cable.from')} 
+                    equipments={endpoints} 
+                    selectedId={startId} 
+                    onChange={(id, e) => { setStartId(id); setStartEntity(e); }} 
+                />
                 <div className="flex justify-center"><ArrowRight className="text-slate-400" /></div>
-                <HierarchySelector label={t('cable.to')} equipments={endpoints} selectedId={endId} onChange={(id, e) => { setEndId(id); setEndEntity(e); }} excludeId={startId} />
+                <HierarchySelector 
+                    label={t('cable.to')} 
+                    equipments={endpoints} 
+                    selectedId={endId} 
+                    onChange={(id, e) => { setEndId(id); setEndEntity(e); }} 
+                    excludeId={startId} 
+                />
             </div>
             <div className="space-y-4">
                 <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-lg flex items-center justify-between">
-                    <span className="text-sm font-bold dark:text-white">{validation.category || 'Invalid'}</span>
+                    <span className="text-sm font-bold dark:text-white">{validation.category || 'Invalid Connection'}</span>
                     <span className="text-xs text-slate-500">{distance.toFixed(0)}m</span>
                 </div>
                 <div>
@@ -274,13 +425,8 @@ const AddCableModal: React.FC<AddCableModalProps> = ({ onClose, onStartDrawing, 
                         {Object.values(CableType).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                 </div>
-                {endEntity?.type === EquipmentType.PCO && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded text-xs text-emerald-700 font-bold flex items-center gap-2">
-                        <CheckCircle2 size={16} /> Auto-Mapping 1:1 Enabled
-                    </div>
-                )}
-                <button onClick={handleSubmit} disabled={!validation.valid} className="w-full py-3 bg-emerald-600 text-white font-bold rounded hover:bg-emerald-700 disabled:opacity-50">
-                    Deploy Cable
+                <button onClick={handleSubmit} disabled={!validation.valid} className="w-full py-3 bg-emerald-600 text-white font-bold rounded hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                    <LinkIcon size={18} /> Deploy Cable
                 </button>
             </div>
         </div>

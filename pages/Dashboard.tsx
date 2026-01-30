@@ -215,28 +215,31 @@ const Dashboard: React.FC = () => {
                             <td colSpan={4} className="py-8 text-center text-slate-500 italic">{t('dashboard.activity.empty')}</td>
                         </tr>
                     ) : (
-                        recentActivity.map((log) => (
-                            <tr key={log.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                                <td className="py-4 pl-2 text-slate-500 dark:text-slate-400 font-mono text-xs whitespace-nowrap">
-                                  {new Date(log.timestamp).toLocaleDateString(i18n.language)} <span className="text-slate-300 dark:text-slate-600">|</span> {new Date(log.timestamp).toLocaleTimeString(i18n.language)}
-                                </td>
-                                <td className="py-4">
-                                    <span className={`text-xs font-extrabold px-2.5 py-1 rounded-md border ${
-                                        log.action === 'CREATE' ? 'text-emerald-600 bg-emerald-50 border-emerald-100 dark:text-emerald-400 dark:border-emerald-500/20 dark:bg-emerald-500/10' :
-                                        log.action === 'DELETE' ? 'text-rose-600 bg-rose-50 border-rose-100 dark:text-rose-400 dark:border-rose-500/20 dark:bg-rose-500/10' :
-                                        'text-blue-600 bg-blue-50 border-blue-100 dark:text-blue-400 dark:border-blue-500/20 dark:bg-blue-500/10'
-                                    }`}>
-                                        {log.action}
-                                    </span>
-                                </td>
-                                <td className="py-4 text-slate-700 dark:text-slate-200 font-medium">
-                                    <span className="font-bold">{log.entityType}</span> <span className="text-slate-400 mx-1">•</span> {log.entityName}
-                                </td>
-                                <td className="py-4 text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                                    <ShieldCheck size={14} className="text-slate-400 dark:text-slate-600" /> {log.user}
-                                </td>
-                            </tr>
-                        ))
+                        recentActivity.map((log) => {
+                            const dateValue = log.created_at || new Date().toISOString();
+                            return (
+                                <tr key={log.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <td className="py-4 pl-2 text-slate-500 dark:text-slate-400 font-mono text-xs whitespace-nowrap">
+                                        {new Date(dateValue).toLocaleDateString(i18n.language)} <span className="text-slate-300 dark:text-slate-600">|</span> {new Date(dateValue).toLocaleTimeString(i18n.language)}
+                                    </td>
+                                    <td className="py-4">
+                                        <span className={`text-xs font-extrabold px-2.5 py-1 rounded-md border ${
+                                            log.action === 'CREATE' ? 'text-emerald-600 bg-emerald-50 border-emerald-100 dark:text-emerald-400 dark:border-emerald-500/20 dark:bg-emerald-500/10' :
+                                            log.action === 'DELETE' ? 'text-rose-600 bg-rose-50 border-rose-100 dark:text-rose-400 dark:border-rose-500/20 dark:bg-rose-500/10' :
+                                            'text-blue-600 bg-blue-50 border-blue-100 dark:text-blue-400 dark:border-blue-500/20 dark:bg-blue-500/10'
+                                        }`}>
+                                            {log.action}
+                                        </span>
+                                    </td>
+                                    <td className="py-4 text-slate-700 dark:text-slate-200 font-medium">
+                                        <span className="font-bold">{log.entity_type}</span> <span className="text-slate-400 mx-1">•</span> {log.entityName || log.entity_id.substring(0,8)}
+                                    </td>
+                                    <td className="py-4 text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                                        <ShieldCheck size={14} className="text-slate-400 dark:text-slate-600" /> {log.user_email || 'System'}
+                                    </td>
+                                </tr>
+                            );
+                        })
                     )}
                 </tbody>
             </table>

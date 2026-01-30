@@ -1,10 +1,9 @@
 
 import React, { useMemo } from 'react';
 import { X, Network, Plus, ChevronUp, ChevronDown, ArrowUp, ArrowDown, MapPin, Server, CircuitBoard, Cpu, ChevronRight, Navigation } from 'lucide-react';
-import { NetworkEntity, EquipmentType, Equipment } from '../../types';
+import { NetworkEntity, EquipmentType, Equipment, SlotConfig } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
 import { useTranslation } from 'react-i18next';
-import { EquipmentArchitectureFactory } from '../../lib/factory/equipment-architecture';
 
 interface EquipmentDetailPanelProps {
   entity: NetworkEntity;
@@ -24,24 +23,25 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
   // Find Parent
   const parent = entity.parentId ? equipments.find(e => e.id === entity.parentId) : null;
 
-  // --- CHASSIS LOGIC ---
+  // --- NEW CHASSIS LOGIC READING FROM METADATA ---
   const chassisSlots = useMemo(() => {
       if (!isChassis) return [];
       
-      const totalSlots = (entity as Equipment).metadata?.totalSlots || 2;
-      const realBoards = equipments.filter(e => e.parentId === entity.id && e.type === EquipmentType.BOARD);
+      const meta = (entity as Equipment).metadata;
+      const totalSlots = meta?.totalSlots || 2;
+      const configuredSlots = meta?.slots as Record<string, SlotConfig> || {};
       
       // Build slots array (1-indexed)
       const slots = [];
       for (let i = 1; i <= totalSlots; i++) {
-          const board = realBoards.find(b => (b.metadata?.slotNumber || 0) === i);
+          const config = configuredSlots[i];
           slots.push({
               slotNumber: i,
-              board: board || null
+              config: config || { slotNumber: i, status: 'EMPTY' }
           });
       }
       return slots;
-  }, [entity, equipments, isChassis]);
+  }, [entity, isChassis]);
 
   // --- STANDARD HIERARCHY LOGIC (For non-chassis or fallback) ---
   const children = useMemo(() => {
@@ -127,6 +127,11 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
                         <MapPin size={10} /> {(entity as any).location.lat.toFixed(5)}, {(entity as any).location.lng.toFixed(5)}
                     </div>
                 )}
+                {(entity as Equipment).metadata?.vendor && (
+                    <div className="mt-2 text-xs text-slate-500 font-bold border-t border-blue-100 dark:border-blue-800 pt-1">
+                        {(entity as Equipment).metadata?.vendor} {(entity as Equipment).metadata?.model}
+                    </div>
+                )}
             </div>
 
             <div className="h-px bg-slate-100 dark:bg-slate-800 my-2" />
@@ -142,34 +147,34 @@ const EquipmentDetailPanel: React.FC<EquipmentDetailPanelProps> = ({ entity, onC
                     </div>
                     
                     <div className="space-y-2">
-                        {chassisSlots.map((slot) => (
-                            <div key={slot.slotNumber} className="flex gap-2 items-stretch h-12">
-                                <div className="w-8 bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-xs font-mono text-slate-400 font-bold rounded-l-lg border-y border-l border-slate-200 dark:border-slate-800">
-                                    {slot.slotNumber}
-                                </div>
-                                <div className="flex-1">
-                                    {slot.board ? (
-                                        <div 
-                                            onClick={() => onSelectEntity(slot.board!)}
-                                            className="h-full bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-r-lg flex items-center justify-between px-3 cursor-pointer transition-colors group"
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <CircuitBoard size={16} className="text-cyan-600 dark:text-cyan-400" />
-                                                <div className="text-xs font-bold text-slate-700 dark:text-slate-300">{slot.board.name}</div>
+                        {chassisSlots.map(({slotNumber, config}) => {
+                            const isOccupied = config.status === 'OCCUPIED';
+                            return (
+                                <div key={slotNumber} className="flex gap-2 items-stretch h-12">
+                                    <div className="w-8 bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-xs font-mono text-slate-400 font-bold rounded-l-lg border-y border-l border-slate-200 dark:border-slate-800">
+                                        {slotNumber}
+                                    </div>
+                                    <div className="flex-1">
+                                        {isOccupied ? (
+                                            <div className="h-full bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-900/20 dark:hover:bg-cyan-900/30 border border-cyan-200 dark:border-cyan-800 rounded-r-lg flex items-center justify-between px-3 cursor-pointer transition-colors group">
+                                                <div className="flex items-center gap-2">
+                                                    <CircuitBoard size={16} className="text-cyan-600 dark:text-cyan-400" />
+                                                    <div>
+                                                        <div className="text-xs font-bold text-slate-700 dark:text-slate-300">{config.boardType}</div>
+                                                        <div className="text-[9px] text-slate-500">{config.portCount} Ports</div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400 px-2 py-0.5 bg-white dark:bg-slate-800 rounded border border-cyan-100 dark:border-cyan-900">Active</div>
                                             </div>
-                                            <ChevronRight size={14} className="text-cyan-400 group-hover:text-cyan-600" />
-                                        </div>
-                                    ) : (
-                                        <button 
-                                            onClick={() => onAddChild({ ...entity, metadata: { ...entity.metadata, preferredSlot: slot.slotNumber } } as any)}
-                                            className="h-full w-full border border-dashed border-slate-300 dark:border-slate-700 rounded-r-lg flex items-center justify-center gap-2 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
-                                        >
-                                            <Plus size={12} /> Empty Slot
-                                        </button>
-                                    )}
+                                        ) : (
+                                            <div className="h-full w-full border border-dashed border-slate-300 dark:border-slate-700 rounded-r-lg flex items-center justify-center gap-2 text-xs text-slate-400 bg-slate-50/50 dark:bg-slate-900/50">
+                                                Empty Slot
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             ) : (

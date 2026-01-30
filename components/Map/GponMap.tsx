@@ -56,7 +56,18 @@ const GponMap: React.FC<GponMapProps> = ({
   onDrawingCancel
 }) => {
   const { t } = useTranslation();
-  const { sites, msans: contextMsans, joints, chambers, cables, deleteEquipment, equipments } = useNetwork();
+  const { 
+      sites, 
+      msans: contextMsans, 
+      olts: contextOlts,
+      splitters: contextSplitters,
+      pcos: contextPcos,
+      joints, 
+      chambers, 
+      cables, 
+      deleteEquipment, 
+      equipments 
+  } = useNetwork();
   
   const msansToRender = propMsans || contextMsans;
 
@@ -241,7 +252,15 @@ const GponMap: React.FC<GponMapProps> = ({
            <CableLayer 
                 map={map} 
                 cables={cables} 
-                entities={[...sites, ...joints, ...pcos, ...msansToRender.filter(m => m.location) as unknown as PhysicalEntity[]]} 
+                entities={[
+                    ...sites, 
+                    ...joints, 
+                    ...chambers,
+                    ...contextOlts, // Use context to ensure full resolution
+                    ...contextSplitters, // Use context
+                    ...contextPcos, // Use context
+                    ...contextMsans.filter(m => m.location) as unknown as PhysicalEntity[]
+                ]} 
                 visible={showCables}
                 onCableClick={onEquipmentSelect ? (cable) => onEquipmentSelect(cable) : undefined}
            />

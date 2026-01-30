@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { FiberCable, EquipmentStatus, CableCategory, EquipmentType } from '../../types';
 import { useNetwork } from '../../context/NetworkContext';
-import { X, Activity, Zap, AlertTriangle, CheckCircle2, ArrowRight, ShieldAlert, Link as LinkIcon, Edit2, Save, RotateCcw, Layers } from 'lucide-react';
+import { X, Activity, Zap, AlertTriangle, CheckCircle2, ArrowRight, ShieldAlert, Link as LinkIcon, Edit2, Save, RotateCcw, Layers, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { FiberStandards } from '../../lib/fiber-standards';
 
@@ -12,9 +12,12 @@ interface CableDetailPanelProps {
   onNavigate?: () => void;
 }
 
-const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable, onClose }) => {
+const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable: initialCable, onClose }) => {
   const { t } = useTranslation();
   const { traceFiberPath, updateCable, updateEquipment, equipments, joints, cables } = useNetwork();
+  
+  // CRITICAL FIX: Use the live cable object from context to ensure UI updates immediately after save
+  const cable = useMemo(() => cables.find(c => c.id === initialCable.id) || initialCable, [cables, initialCable.id]);
   
   // Resolve Endpoints names
   const startNode = useMemo(() => equipments.find(e => e.id === cable.startNodeId), [cable.startNodeId, equipments]);
@@ -40,68 +43,110 @@ const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable, onClose }) =
       return Array.from({ length: capacity }).map((_, i) => i + 1);
   }, [endNode]);
 
+  // Initialize draft mappings when entering edit mode or when cable updates
   useEffect(() => {
       const initial: Record<number, string> = {};
       const fiberMeta = cable.metadata?.fibers || {};
       Object.keys(fiberMeta).forEach(key => {
           const f = fiberMeta[key];
           if (f.downstreamPort) {
-              initial[parseInt(key)] = f.downstreamPort;
+              initial[parseInt(key)] = f.downstreamPort.toString();
           }
       });
       setDraftMappings(initial);
   }, [cable, isEditing]);
 
+  const handleAutoMap = () => {
+      const newMappings: Record<number, string> = {};
+      const limit = Math.min(cable.fiberCount, downstreamPorts.length);
+      for(let i = 1; i <= limit; i++) {
+          newMappings[i] = i.toString();
+      }
+      setDraftMappings(newMappings);
+  };
+
   const handleSaveMapping = async () => {
       setIsSaving(true);
       try {
-          const currentFibers = cable.metadata?.fibers || {};
+          // Deep copy current fibers to avoid mutation issues
+          const currentFibers = JSON.parse(JSON.stringify(cable.metadata?.fibers || {}));
           const newFibers = { ...currentFibers };
           
+          const endNodeUpdates: Record<string, any> = {};
+          const startNodeUpdates: Record<string, any> = {};
+
           Object.keys(draftMappings).forEach(fiberKey => {
               const fid = parseInt(fiberKey);
-              const port = draftMappings[fid];
+              const portStr = draftMappings[fid];
               
-              if (!newFibers[fid]) newFibers[fid] = { status: 'USED' };
+              // Ensure object exists
+              if (!newFibers[fid]) newFibers[fid] = { status: 'FREE' };
               
-              if (port === 'DISCONNECT') {
+              if (portStr === 'DISCONNECT') {
+                  // Clear mapping
                   delete newFibers[fid].downstreamPort;
+                  delete newFibers[fid].downstreamId;
+                  newFibers[fid].status = 'FREE';
               } else {
+                  // Set new mapping
+                  const portNum = parseInt(portStr);
                   newFibers[fid] = {
                       ...newFibers[fid],
-                      status: 'USED',
-                      downstreamPort: port,
+                      status: 'USED', // Explicitly set USED
+                      downstreamPort: portNum,
                       downstreamId: endNode?.id
                   };
+                  
+                  // 1. Prepare End Node Update (Bi-directional link - PCO side)
+                  // This marks the PCO port as occupied by this cable
+                  endNodeUpdates[`P${portNum}`] = {
+                      status: 'USED',
+                      cableId: cable.id,
+                      fiberIndex: fid,
+                      connectedTo: startNode?.name || 'Upstream',
+                      updatedAt: new Date().toISOString()
+                  };
+
+                  // 2. Prepare Start Node Update (Splitter side)
+                  // Assuming Fiber Index 1 maps to Splitter Port 1, etc.
+                  // If we need offset logic, we'd need to know which Splitter port feeds Fiber 1.
+                  // For now, we assume 1:1 mapping from Cable Fiber to Splitter Port if it's a direct drop.
+                  if (startNode?.type === EquipmentType.SPLITTER) {
+                      // Simple mapping: Fiber 1 -> Splitter Port 1 (or + offset if part of a larger cable)
+                      // Assuming cable starts at the splitter port matching the fiber index
+                      startNodeUpdates[`P${fid}`] = {
+                          status: 'USED',
+                          cableId: cable.id,
+                          fiberIndex: fid,
+                          connectedTo: endNode?.name || 'Downstream',
+                          connectedToId: endNode?.id,
+                          pcoFiberIndex: portNum, // Store which PCO port this goes to
+                          updatedAt: new Date().toISOString()
+                      };
+                  }
               }
           });
 
+          // A. Update Cable Metadata
           await updateCable(cable.id, {
               metadata: { ...cable.metadata, fibers: newFibers }
           });
 
-          if (endNode && downstreamPorts.length > 0) {
+          // B. Update End Node (PCO)
+          if (endNode && Object.keys(endNodeUpdates).length > 0) {
               const currentConnections = endNode.metadata?.connections || {};
-              const newConnections = { ...currentConnections };
-
-              Object.keys(draftMappings).forEach(fiberKey => {
-                  const fid = parseInt(fiberKey);
-                  const port = draftMappings[fid];
-                  
-                  if (port && port !== 'DISCONNECT') {
-                      const portKey = `P${port}`;
-                      newConnections[portKey] = {
-                          status: 'USED',
-                          cableId: cable.id,
-                          fiberIndex: fid,
-                          connectedTo: cable.name,
-                          updatedAt: new Date().toISOString()
-                      };
-                  }
-              });
-
+              const newConnections = { ...currentConnections, ...endNodeUpdates };
               await updateEquipment(endNode.id, {
                   metadata: { ...endNode.metadata, connections: newConnections }
+              });
+          }
+
+          // C. Update Start Node (Splitter)
+          if (startNode && Object.keys(startNodeUpdates).length > 0) {
+              const currentConnections = startNode.metadata?.connections || {};
+              const newConnections = { ...currentConnections, ...startNodeUpdates };
+              await updateEquipment(startNode.id, {
+                  metadata: { ...startNode.metadata, connections: newConnections }
               });
           }
 
@@ -130,12 +175,16 @@ const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable, onClose }) =
           }
       }
 
-      if (isEditing && draftMappings[fiberId]) {
-          if (draftMappings[fiberId] === 'DISCONNECT') {
-              downstreamLabel = 'Not Connected';
-              downstreamType = 'OPEN';
+      if (isEditing) {
+          if (draftMappings[fiberId]) {
+              if (draftMappings[fiberId] === 'DISCONNECT') {
+                  downstreamLabel = 'Not Connected';
+                  downstreamType = 'OPEN';
+              } else {
+                  downstreamLabel = `${endNode?.name} : Port ${draftMappings[fiberId]} (Pending)`;
+              }
           } else {
-              downstreamLabel = `${endNode?.name} : Port ${draftMappings[fiberId]} (Pending)`;
+              downstreamLabel = 'Unmapped';
           }
       } 
       else if (endNode?.type === EquipmentType.PCO || endNode?.type === EquipmentType.SPLITTER) {
@@ -168,6 +217,7 @@ const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable, onClose }) =
           let status = info.status || 'FREE'; 
           const conn = getConnectivity(id);
           
+          // Visual override for connectivity-implied usage
           if (status === 'FREE') {
               if (conn.upstreamType === 'CABLE' || (conn.downstreamType === 'CABLE' && !isEditing)) {
                   status = 'USED';
@@ -249,6 +299,13 @@ const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable, onClose }) =
                 )}
                 {isEditing && (
                     <div className="flex gap-2">
+                        <button 
+                            onClick={handleAutoMap}
+                            className="p-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors text-xs font-bold flex items-center gap-1"
+                            title="Auto Map 1:1"
+                        >
+                            <Wand2 size={14} /> Auto
+                        </button>
                         <button 
                             onClick={() => { setIsEditing(false); setDraftMappings({}); }}
                             className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
@@ -363,7 +420,7 @@ const CableDetailPanel: React.FC<CableDetailPanelProps> = ({ cable, onClose }) =
                                                         <option value="">-- Unpatched --</option>
                                                         <option value="DISCONNECT">[ Disconnect ]</option>
                                                         {downstreamPorts.map(p => (
-                                                            <option key={p} value={p}>Port {p}</option>
+                                                            <option key={p} value={p.toString()}>Port {p}</option>
                                                         ))}
                                                     </select>
                                                 ) : (

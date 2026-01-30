@@ -17,14 +17,6 @@ const CableLayer: React.FC<CableLayerProps> = ({ map, cables, entities, onCableC
   const { traceFiberPath } = useNetwork();
   const layerGroupRef = useRef<L.LayerGroup>(new L.LayerGroup());
 
-  // Helper to find entity name by ID
-  const findEntityName = (id: string) => {
-      if (!id) return '-';
-      const realId = id.includes('::') ? id.split('::')[0] : id;
-      const ent = entities.find(e => e.id === realId);
-      return ent ? ent.name : 'Unknown';
-  };
-
   useEffect(() => {
     if (visible) {
       layerGroupRef.current.addTo(map);
@@ -39,6 +31,20 @@ const CableLayer: React.FC<CableLayerProps> = ({ map, cables, entities, onCableC
 
     layerGroupRef.current.clearLayers();
 
+    // Optimization: Create Maps for O(1) lookup
+    const entityMap = new Map<string, PhysicalEntity>();
+    entities.forEach(e => entityMap.set(e.id, e));
+    
+    const cableMap = new Map<string, FiberCable>();
+    cables.forEach(c => cableMap.set(c.id, c));
+
+    // Helper to find entity name
+    const getName = (id: string) => {
+        if (!id) return '-';
+        const realId = id.includes('::') ? id.split('::')[0] : id;
+        return entityMap.get(realId)?.name || 'Unknown';
+    };
+
     cables.forEach(cable => {
       const isTransport = cable.category === CableCategory.TRANSPORT;
       const color = isTransport ? '#1e40af' : '#10b981'; // Blue vs Green
@@ -52,8 +58,8 @@ const CableLayer: React.FC<CableLayerProps> = ({ map, cables, entities, onCableC
       
       // Fallback if path is missing but endpoints exist
       if (latlngs.length < 2) {
-          const startNode = entities.find(e => e.id === (cable.startNodeId.includes('::') ? cable.startNodeId.split('::')[0] : cable.startNodeId));
-          const endNode = entities.find(e => e.id === (cable.endNodeId.includes('::') ? cable.endNodeId.split('::')[0] : cable.endNodeId));
+          const startNode = entityMap.get(cable.startNodeId.split('::')[0]);
+          const endNode = entityMap.get(cable.endNodeId.split('::')[0]);
           if (startNode?.location && endNode?.location) {
               latlngs = [[startNode.location.lat, startNode.location.lng], [endNode.location.lat, endNode.location.lng]];
           }
@@ -83,22 +89,41 @@ const CableLayer: React.FC<CableLayerProps> = ({ map, cables, entities, onCableC
         const traceTableRows = Array.from({length: Math.min(cable.fiberCount, 8)}).map((_, i) => {
             const fib = i + 1;
             const mapInfo = fiberMap[fib];
-            const isUsed = !!mapInfo && mapInfo.status === 'USED';
             
             // Color Logic
             const struct = FiberStandards.getStructure(cable.cableType, fib);
             
             // Destination Logic
             let destLabel = '-';
+            
+            // 1. Check Explicit Mapping (PCO/Splitter Logic)
             if (mapInfo?.downstreamPort) {
-                // Precise Port
                 destLabel = `Port ${mapInfo.downstreamPort}`;
             } else if (mapInfo?.downstreamId) {
-                // General Entity (e.g. Splitter Input)
-                destLabel = findEntityName(mapInfo.downstreamId);
-            } else if (isUsed) {
-                // Infer from Cable End
-                destLabel = findEntityName(cable.endNodeId);
+                destLabel = getName(mapInfo.downstreamId);
+            } else {
+                // 2. Fallback to Physical Endpoint + Splice Logic (Joint/Transport Logic)
+                const endNodeId = cable.endNodeId.includes('::') ? cable.endNodeId.split('::')[0] : cable.endNodeId;
+                const endNode = entityMap.get(endNodeId);
+                
+                if (endNode) {
+                    destLabel = endNode.name;
+                    
+                    // Check Splicing if End Node is a Joint/Chamber
+                    if (endNode.type === EquipmentType.JOINT || endNode.type === EquipmentType.CHAMBER) {
+                        const splices = (endNode as any).metadata?.splices || [];
+                        const splice = splices.find((s: any) => 
+                           (s.cableIn === cable.id && s.fiberIn === fib) || 
+                           (s.cableOut === cable.id && s.fiberOut === fib)
+                        );
+                        
+                        if (splice) {
+                            const nextId = splice.cableIn === cable.id ? splice.cableOut : splice.cableIn;
+                            const nextName = cableMap.get(nextId)?.name || 'Unknown';
+                            destLabel += ` → ${nextName}`;
+                        }
+                    }
+                }
             }
 
             return `
@@ -109,7 +134,7 @@ const CableLayer: React.FC<CableLayerProps> = ({ map, cables, entities, onCableC
                        <span class="w-2 h-4 rounded-sm border border-black/10" style="background-color: ${struct.fiberColor.hex}"></span>
                     </div>
                 </td>
-                <td class="py-2 px-2 text-[10px] font-medium text-slate-700 truncate max-w-[120px]">
+                <td class="py-2 px-2 text-[10px] font-medium text-slate-700 truncate max-w-[120px]" title="${destLabel}">
                     ${destLabel}
                 </td>
                 <td class="py-2 px-2 text-center">
@@ -167,11 +192,10 @@ const CableLayer: React.FC<CableLayerProps> = ({ map, cables, entities, onCableC
             offset: [0, -10]
         });
 
-        // --- CRITICAL FIX: Bind Click Listener on Popup Open ---
+        // --- Bind Click Listener on Popup Open ---
         hitBox.on('popupopen', () => {
             const btn = document.getElementById(`btn-full-${cable.id}`);
             if (btn) {
-                // Clear any old listeners to prevent duplicates/memory leaks in SPA
                 const newBtn = btn.cloneNode(true);
                 btn.parentNode?.replaceChild(newBtn, btn);
                 
